@@ -170,6 +170,27 @@ CREATE TABLE order_payment (
     KEY idx_pay_status (pay_status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='订单支付流水表';
 
+-- 销售汇总表
+DROP TABLE IF EXISTS sales_summary;
+CREATE TABLE sales_summary (
+    id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    erp_goods_id VARCHAR(64) DEFAULT NULL COMMENT 'ERP商品ID',
+    product_name VARCHAR(200) DEFAULT NULL COMMENT '商品名称',
+    quantity INT DEFAULT 0 COMMENT '销售数量',
+    total_amount DECIMAL(10,2) DEFAULT 0.00 COMMENT '销售总金额',
+    order_date DATE DEFAULT NULL COMMENT '订单日期',
+    sync_status TINYINT DEFAULT 0 COMMENT '同步状态：0未同步 1已同步 2同步失败',
+    sync_attempts INT DEFAULT 0 COMMENT '同步重试次数',
+    sync_error VARCHAR(500) DEFAULT NULL COMMENT '同步错误信息',
+    create_time DATETIME DEFAULT NULL COMMENT '创建时间',
+    update_time DATETIME DEFAULT NULL COMMENT '更新时间',
+    is_deleted TINYINT DEFAULT 0 COMMENT '逻辑删除：0未删除 1已删除',
+    PRIMARY KEY (id),
+    KEY idx_erp_goods_id (erp_goods_id),
+    KEY idx_order_date (order_date),
+    KEY idx_sync_status (sync_status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='销售汇总表';
+
 -- 初始测试数据
 INSERT INTO product_category (erp_category_id, category_name, sort, status, create_time, update_time) VALUES
 ('CAT001', '热菜', 1, 1, NOW(), NOW()),

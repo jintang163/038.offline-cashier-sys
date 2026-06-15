@@ -2,6 +2,7 @@ package com.cashier.server.controller.product;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.cashier.server.common.Result;
+import com.cashier.server.dto.ProductSyncDTO;
 import com.cashier.server.entity.product.Product;
 import com.cashier.server.entity.product.ProductStock;
 import com.cashier.server.service.erp.ErpSyncService;
@@ -9,6 +10,9 @@ import com.cashier.server.service.product.ProductService;
 import com.cashier.server.service.product.ProductStockService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
+
+import java.time.LocalDateTime;
+import java.util.List;
 
 @RestController
 @RequestMapping("/product")
@@ -96,5 +100,13 @@ public class ProductController {
         erpSyncService.syncProductsFromErp();
         erpSyncService.syncStockFromErp();
         return Result.success();
+    }
+
+    @GetMapping("/sync-list")
+    public Result<List<ProductSyncDTO>> getSyncList(
+            @RequestParam(required = false) LocalDateTime updateTime,
+            @RequestParam(required = false) Integer status) {
+        List<ProductSyncDTO> result = productService.getProductSyncList(updateTime, status);
+        return Result.success(result);
     }
 }

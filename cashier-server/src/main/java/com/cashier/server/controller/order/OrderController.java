@@ -2,6 +2,7 @@ package com.cashier.server.controller.order;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.cashier.server.common.Result;
+import com.cashier.server.dto.OrderSyncDTO;
 import com.cashier.server.entity.order.Order;
 import com.cashier.server.entity.order.OrderItem;
 import com.cashier.server.entity.order.OrderPayment;
@@ -97,6 +98,12 @@ public class OrderController {
     @PostMapping("/batch-create")
     public Result<Map<String, Object>> batchCreate(@RequestBody List<Map<String, Object>> orderList) {
         Map<String, Object> result = orderService.batchCreateOrders(orderList);
+        return Result.success(result);
+    }
+
+    @PostMapping("/batch-sync")
+    public Result<Map<String, Object>> batchSync(@RequestBody List<OrderSyncDTO> orderList) {
+        Map<String, Object> result = orderService.batchSyncOrders(orderList);
         return Result.success(result);
     }
 }

@@ -27,3 +27,12 @@ logging:
   level:
     com.cashier.server: debug
     org.springframework.web: info
+
+erp:
+  api:
+    base-url: http://erp.example.com/api
+    app-key: your_app_key
+    app-secret: your_app_secret
+    timeout: 30000
+    retry-times: 3
+    retry-interval: 5000

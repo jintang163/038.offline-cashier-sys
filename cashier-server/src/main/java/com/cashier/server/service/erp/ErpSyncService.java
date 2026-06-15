@@ -1,5 +1,7 @@
 package com.cashier.server.service.erp;
 
+import com.cashier.server.entity.order.Order;
+import com.cashier.server.entity.order.SalesSummary;
 import com.cashier.server.entity.product.Product;
 import com.cashier.server.entity.product.ProductCategory;
 
@@ -15,6 +17,14 @@ public interface ErpSyncService {
     boolean syncOrdersToErp();
 
     boolean syncOrderToErp(Long orderId);
+
+    List<Map<String, Object>> pullProductsFromErp();
+
+    List<Map<String, Object>> pullStockFromErp();
+
+    boolean pushOrderToErp(Order order);
+
+    boolean pushSalesSummaryToErp(List<SalesSummary> list);
 
     boolean receiveProductPush(List<Map<String, Object>> productList);
 

@@ -48,9 +48,9 @@ class SyncService {
 
     try {
       const lastSyncTime = await db.getSetting('lastProductSyncTime')
-      const params = lastSyncTime ? { updated_since: lastSyncTime } : {}
+      const params = lastSyncTime ? { updateTime: lastSyncTime } : {}
 
-      const response = await api.getProducts({ ...params, pageSize: 1000 })
+      const response = await api.getProductSyncList({ ...params, status: 1 })
       const products = response.data?.items || response.data || []
 
       if (products.length > 0) {
@@ -74,6 +74,64 @@ class SyncService {
       await db.addSyncRecord('products', 'failed', { error: error.message })
       this.emit('syncComplete', { type: 'products', success: false, error: error.message })
       this.emit('statusChange', { type: 'products', status: 'failed', error: error.message })
+      throw error
+    }
+  }
+
+  async syncSalesSummaries() {
+    if (!navigator.onLine) {
+      throw new Error('OFFLINE')
+    }
+
+    this.emit('syncStart', { type: 'salesSummaries' })
+    this.emit('statusChange', { type: 'salesSummaries', status: 'syncing' })
+
+    try {
+      const summariesToSync = await db.getUnsyncedSalesSummaries(100)
+
+      if (summariesToSync.length === 0) {
+        this.emit('syncComplete', { type: 'salesSummaries', success: true, count: 0 })
+        this.emit('statusChange', { type: 'salesSummaries', status: 'success' })
+        return { success: true, count: 0 }
+      }
+
+      const results = { success: 0, failed: 0, errors: [] }
+
+      const batchSize = 50
+      for (let i = 0; i < summariesToSync.length; i += batchSize) {
+        const batch = summariesToSync.slice(i, i + batchSize)
+        
+        try {
+          await api.post('/order/sales-summary', batch)
+          
+          for (const summary of batch) {
+            await db.updateSalesSummarySyncStatus(summary.id, 1)
+            results.success++
+          }
+        } catch (error) {
+          for (const summary of batch) {
+            results.failed++
+            results.errors.push({ id: summary.id, error: error.message })
+            await db.updateSalesSummarySyncStatus(summary.id, 2, error.message)
+          }
+        }
+      }
+
+      await db.setSetting('lastSalesSummarySyncTime', new Date().toISOString())
+      await db.addSyncRecord('salesSummaries', results.failed > 0 ? 'partial' : 'success', results)
+
+      this.emit('syncComplete', { type: 'salesSummaries', success: results.failed === 0, results })
+      this.emit('statusChange', {
+        type: 'salesSummaries',
+        status: results.failed === 0 ? 'success' : 'partial',
+        results,
+      })
+
+      return results
+    } catch (error) {
+      await db.addSyncRecord('salesSummaries', 'failed', { error: error.message })
+      this.emit('syncComplete', { type: 'salesSummaries', success: false, error: error.message })
+      this.emit('statusChange', { type: 'salesSummaries', status: 'failed', error: error.message })
       throw error
     }
   }
@@ -102,30 +160,87 @@ class SyncService {
         ordersToSync = [...ordersToSync, ...failedOrders]
       }
 
+      if (ordersToSync.length === 0) {
+        this.emit('syncComplete', { type: 'orders', success: true, count: 0 })
+        this.emit('statusChange', { type: 'orders', status: 'success' })
+        return { success: true, count: 0 }
+      }
+
       const results = { success: 0, failed: 0, errors: [] }
 
-      for (const order of ordersToSync) {
+      const batchSize = 20
+      for (let i = 0; i < ordersToSync.length; i += batchSize) {
+        const batch = ordersToSync.slice(i, i + batchSize)
+        
         try {
-          const orderData = {
+          const orderDataList = batch.map((order) => ({
             order_no: order.order_no,
+            erp_order_id: order.erp_order_id,
             total_amount: order.total_amount,
             discount_amount: order.discount_amount || 0,
             pay_amount: order.pay_amount,
             pay_type: order.pay_type,
+            pay_status: order.pay_status ?? 1,
+            order_status: order.order_status ?? 2,
             cashier_id: order.cashier_id,
             cashier_name: order.cashier_name,
-            status: order.status,
-            items: order.items || [],
+            member_id: order.member_id,
+            member_name: order.member_name,
+            remark: order.remark,
             created_at: order.created_at,
+            items: (order.items || []).map((item) => ({
+              product_id: item.product_id,
+              erp_goods_id: item.erp_goods_id,
+              product_name: item.product_name,
+              barcode: item.barcode,
+              image: item.image,
+              price: item.price,
+              quantity: item.quantity,
+              subtotal: item.subtotal,
+              total_amount: item.total_amount || item.subtotal,
+              discount_amount: item.discount_amount || 0,
+              pay_amount: item.pay_amount || item.subtotal,
+            })),
+            payments: (order.payments || []).map((payment) => ({
+              payment_no: payment.payment_no,
+              pay_type: payment.pay_type,
+              pay_amount: payment.pay_amount || payment.amount,
+              pay_status: payment.pay_status ?? 1,
+              pay_time: payment.pay_time,
+              transaction_id: payment.transaction_id,
+            })),
+            sync_status: order.sync_status,
+            sync_attempts: order.sync_attempts || 0,
+            sync_error: order.sync_error,
+          }))
+
+          const response = await api.batchSyncOrders(orderDataList)
+          const result = response.data || {}
+          
+          const failOrderMap = new Map()
+          if (result.failOrders) {
+            result.failOrders.forEach((fail) => {
+              failOrderMap.set(fail.order_no, fail.error)
+            })
           }
 
-          await api.createOrder(orderData)
-          await db.updateOrderSyncStatus(order.id, 1)
-          results.success++
+          for (const order of batch) {
+            if (failOrderMap.has(order.order_no)) {
+              results.failed++
+              const error = failOrderMap.get(order.order_no)
+              results.errors.push({ orderId: order.id, orderNo: order.order_no, error })
+              await db.updateOrderSyncStatus(order.id, 2, error)
+            } else {
+              await db.updateOrderSyncStatus(order.id, 1)
+              results.success++
+            }
+          }
         } catch (error) {
-          results.failed++
-          results.errors.push({ orderId: order.id, orderNo: order.order_no, error: error.message })
-          await db.updateOrderSyncStatus(order.id, 2, error.message)
+          for (const order of batch) {
+            results.failed++
+            results.errors.push({ orderId: order.id, orderNo: order.order_no, error: error.message })
+            await db.updateOrderSyncStatus(order.id, 2, error.message)
+          }
         }
       }
 
@@ -148,7 +263,7 @@ class SyncService {
     }
   }
 
-  async syncAll() {
+  async fullSync() {
     if (this.syncing) {
       return { success: false, message: '正在同步中，请稍后再试' }
     }
@@ -161,6 +276,14 @@ class SyncService {
         success: false,
         error: e.message,
       }))
+      
+      const salesSummaryResult = await this.syncSalesSummaries().catch((e) => ({
+        success: false,
+        error: e.message,
+        success: 0,
+        failed: 0,
+      }))
+      
       const orderResult = await this.syncOrders().catch((e) => ({
         success: false,
         error: e.message,
@@ -171,12 +294,17 @@ class SyncService {
       return {
         success: true,
         products: productResult,
+        salesSummaries: salesSummaryResult,
         orders: orderResult,
       }
     } finally {
       this.syncing = false
       this.emit('allSyncComplete')
     }
+  }
+
+  async syncAll() {
+    return this.fullSync()
   }
 
   async retryFailedOrder(orderId) {
@@ -197,12 +325,14 @@ class SyncService {
     })()
     const lastProductSyncTime = await db.getSetting('lastProductSyncTime')
     const lastOrderSyncTime = await db.getSetting('lastOrderSyncTime')
+    const lastSalesSummarySyncTime = await db.getSetting('lastSalesSummarySyncTime')
 
     return {
       unsyncedOrderCount: unsyncedCount,
       failedOrderCount: failedCount,
       lastProductSyncTime,
       lastOrderSyncTime,
+      lastSalesSummarySyncTime,
       isOnline: navigator.onLine,
       isSyncing: this.syncing,
     }
@@ -219,7 +349,7 @@ class SyncService {
   async handleNetworkRestore() {
     if (this.autoSyncEnabled && navigator.onLine) {
       try {
-        await this.syncAll()
+        await this.fullSync()
       } catch (error) {
         console.error('Auto sync failed:', error)
       }

@@ -1,4 +1,4 @@
-import db from './dexie'
+import db from '../utils/db'
 
 const mockCategories = [
   { id: 1, name: '饮料', sort: 1, status: 1 },

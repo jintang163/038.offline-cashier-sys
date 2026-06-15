@@ -2,9 +2,10 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { Input, Button, Modal, Radio, message, Empty, InputNumber, Alert } from 'antd'
 import { SearchOutlined, DeleteOutlined, PlusOutlined, MinusOutlined, WifiOutlined } from '@ant-design/icons'
 import AppLayout from '../components/AppLayout'
-import db from '../db/dexie'
+import db from '../utils/db'
 import { initMockData } from '../db/mockData'
 import useNetworkStatus from '../hooks/useNetwork'
+import syncService from '../services/syncService'
 import dayjs from 'dayjs'
 
 function Cashier() {
@@ -23,26 +24,39 @@ function Cashier() {
   }, [])
 
   const initData = async () => {
-    await initMockData()
-    loadCategories()
-    loadProducts()
+    try {
+      await initMockData()
+      loadCategories()
+      loadProducts()
+    } catch (error) {
+      console.error('Failed to init data:', error)
+      message.error('数据初始化失败')
+    }
   }
 
   const loadCategories = async () => {
-    const data = await db.getCategories()
-    setCategories(data)
+    try {
+      const data = await db.getCategories()
+      setCategories(data)
+    } catch (error) {
+      console.error('Failed to load categories:', error)
+    }
   }
 
   const loadProducts = async (categoryId = null) => {
-    const params = { pageSize: 100 }
-    if (categoryId) {
-      params.categoryId = categoryId
+    try {
+      const params = { pageSize: 100 }
+      if (categoryId) {
+        params.categoryId = categoryId
+      }
+      if (searchText) {
+        params.keyword = searchText
+      }
+      const data = await db.getProducts(params)
+      setProducts(data.items)
+    } catch (error) {
+      console.error('Failed to load products:', error)
     }
-    if (searchText) {
-      params.keyword = searchText
-    }
-    const data = await db.getProducts(params)
-    setProducts(data.items)
   }
 
   useEffect(() => {
@@ -57,15 +71,26 @@ function Cashier() {
   }
 
   const addToCart = useCallback((product) => {
+    if (product.stock <= 0) {
+      message.warning('该商品库存不足')
+      return
+    }
     setCart((prevCart) => {
       const existing = prevCart.find((item) => item.product_id === product.id)
       if (existing) {
+        if (existing.quantity >= product.stock) {
+          message.warning('该商品库存不足')
+          return prevCart
+        }
         return prevCart.map((item) =>
           item.product_id === product.id
             ? {
                 ...item,
                 quantity: item.quantity + 1,
                 subtotal: Number(((item.quantity + 1) * item.price).toFixed(2)),
+                total_amount: Number(((item.quantity + 1) * item.price).toFixed(2)),
+                discount_amount: 0,
+                pay_amount: Number(((item.quantity + 1) * item.price).toFixed(2)),
               }
             : item
         )
@@ -74,11 +99,15 @@ function Cashier() {
         ...prevCart,
         {
           product_id: product.id,
-          product_name: product.name,
+          erp_goods_id: product.erp_goods_id,
+          product_name: product.product_name || product.name,
           barcode: product.barcode,
           price: product.price,
           quantity: 1,
           subtotal: product.price,
+          total_amount: product.price,
+          discount_amount: 0,
+          pay_amount: product.price,
           image: product.image,
         },
       ]
@@ -90,6 +119,11 @@ function Cashier() {
       removeFromCart(productId)
       return
     }
+    const product = products.find((p) => p.id === productId)
+    if (product && quantity > product.stock) {
+      message.warning('该商品库存不足')
+      return
+    }
     setCart((prevCart) =>
       prevCart.map((item) =>
         item.product_id === productId
@@ -97,6 +131,9 @@ function Cashier() {
               ...item,
               quantity,
               subtotal: Number((quantity * item.price).toFixed(2)),
+              total_amount: Number((quantity * item.price).toFixed(2)),
+              discount_amount: 0,
+              pay_amount: Number((quantity * item.price).toFixed(2)),
             }
           : item
       )
@@ -132,12 +169,31 @@ function Cashier() {
       const userInfo = JSON.parse(localStorage.getItem('userInfo') || '{}')
       const orderData = {
         items: cart,
+        payments: [
+          {
+            payment_no: `PAY${Date.now()}${Math.random().toString(36).substr(2, 4)}`,
+            pay_type: payType,
+            pay_amount: Number(payAmount),
+            pay_status: 1,
+            pay_time: new Date().toISOString(),
+            transaction_id: null,
+          }
+        ],
         total_amount: Number(totalAmount.toFixed(2)),
         discount_amount: Number(discount),
         pay_amount: Number(payAmount),
         pay_type: payType,
+        pay_status: 1,
+        order_status: 2,
+        sync_status: 0,
+        sync_attempts: 0,
+        sync_error: null,
         cashier_id: userInfo.id || null,
         cashier_name: userInfo.name || '收银员',
+        member_id: null,
+        member_name: null,
+        remark: null,
+        created_at: new Date().toISOString(),
       }
 
       const order = await db.createOrder(orderData)
@@ -147,7 +203,16 @@ function Cashier() {
       setDiscount(0)
       setPayModalVisible(false)
       loadProducts(activeCategory)
+
+      if (isOnline) {
+        try {
+          await syncService.syncSalesSummaries()
+        } catch (e) {
+          console.warn('Auto sync sales summaries failed:', e)
+        }
+      }
     } catch (error) {
+      console.error('Payment failed:', error)
       message.error('结算失败：' + error.message)
     }
   }
@@ -155,7 +220,7 @@ function Cashier() {
   const handleQuickAdd = (e) => {
     if (e.key === 'Enter' && searchText) {
       const product = products.find(
-        (p) => p.barcode === searchText || p.name === searchText
+        (p) => p.barcode === searchText || (p.product_name || p.name) === searchText
       )
       if (product) {
         addToCart(product)
@@ -221,12 +286,15 @@ function Cashier() {
                 {products.map((product) => (
                   <div
                     key={product.id}
-                    className="product-card"
+                    className={`product-card ${product.stock <= 0 ? 'out-of-stock' : ''}`}
                     onClick={() => addToCart(product)}
                   >
                     <div className="product-image">{product.image || '📦'}</div>
-                    <div className="product-name">{product.name}</div>
+                    <div className="product-name">{product.product_name || product.name}</div>
                     <div className="product-price">¥{product.price.toFixed(2)}</div>
+                    <div className={`product-stock ${product.stock <= 10 ? 'low' : ''}`}>
+                      库存: {product.stock}
+                    </div>
                   </div>
                 ))}
               </div>

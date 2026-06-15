@@ -1,5 +1,6 @@
-const { app, BrowserWindow, ipcMain, shell } = require('electron')
+const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron')
 const path = require('path')
+const fs = require('fs')
 const isDev = process.env.NODE_ENV === 'development'
 
 let mainWindow = null
@@ -87,6 +88,68 @@ ipcMain.handle('maximize-window', () => {
 ipcMain.handle('close-window', () => {
   if (mainWindow) {
     mainWindow.close()
+  }
+})
+
+ipcMain.handle('get-db-path', () => {
+  try {
+    if (!db) {
+      throw new Error('Database not initialized')
+    }
+    return { success: true, data: db.getDbPath() }
+  } catch (error) {
+    console.error('Get db path error:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+ipcMain.handle('backup-database', async (event, { backupPath }) => {
+  try {
+    if (!db) {
+      throw new Error('Database not initialized')
+    }
+    
+    if (!backupPath) {
+      const defaultPath = path.join(app.getPath('documents'), `cashier_backup_${Date.now()}.db')
+      backupPath = dialog.showSaveDialogSync(mainWindow, {
+        defaultPath,
+        filters: [{ name: 'Database Files', ['*.db'] }],
+      })
+      if (!backupPath) {
+        throw new Error('No backup path selected')
+      }
+    }
+    
+    const result = await db.backupDatabase(backupPath)
+    return { success: true, data: result }
+  } catch (error) {
+    console.error('Backup database error:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+ipcMain.handle('restore-database', async (event, { backupPath }) => {
+  try {
+    if (!db) {
+      throw new Error('Database not initialized')
+    }
+    
+    if (!backupPath) {
+      const files = dialog.showOpenDialogSync(mainWindow, {
+        properties: ['openFile'],
+        filters: [{ name: 'Database Files', extensions: ['db'] }],
+      })
+      if (!files || files.length === 0) {
+        throw new Error('No backup file selected')
+      }
+      backupPath = files[0]
+    }
+    
+    const result = db.restoreDatabase(backupPath)
+    return { success: true, data: result }
+  } catch (error) {
+    console.error('Restore database error:', error)
+    return { success: false, error: error.message }
   }
 })
 

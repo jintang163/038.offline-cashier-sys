@@ -7,6 +7,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   maximizeWindow: () => ipcRenderer.invoke('maximize-window'),
   closeWindow: () => ipcRenderer.invoke('close-window'),
 
+  getDbPath: () => ipcRenderer.invoke('get-db-path'),
+  backupDatabase: (backupPath) => ipcRenderer.invoke('backup-database', { backupPath }),
+  restoreDatabase: (backupPath) => ipcRenderer.invoke('restore-database', { backupPath }),
+
   sqliteExec: (method, ...params) =>
     ipcRenderer.invoke('sqlite-exec', { method, params }),
 })

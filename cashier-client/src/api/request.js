@@ -1,5 +1,5 @@
 import axios from 'axios'
-import db from '../db/dexie'
+import db from '../utils/db'
 import { message } from 'antd'
 import { getToken, clearAuth } from '../utils/auth'
 
@@ -139,6 +139,17 @@ class ApiService {
     )
   }
 
+  async getProductSyncList(params) {
+    return this.request(
+      {
+        url: '/product/sync-list',
+        method: 'get',
+        params,
+      },
+      { offlineQueue: false }
+    )
+  }
+
   async getCategories() {
     return this.request(
       {
@@ -183,6 +194,33 @@ class ApiService {
       url: '/settings',
       method: 'put',
       data: settings,
+    })
+  }
+
+  async post(url, data, options = {}) {
+    return this.request(
+      {
+        url,
+        method: 'post',
+        data,
+      },
+      options
+    )
+  }
+
+  async batchSyncOrders(orders) {
+    return this.request({
+      url: '/order/batch-sync',
+      method: 'post',
+      data: orders,
+    })
+  }
+
+  async syncSalesSummary(summaries) {
+    return this.request({
+      url: '/order/sales-summary',
+      method: 'post',
+      data: summaries,
     })
   }
 

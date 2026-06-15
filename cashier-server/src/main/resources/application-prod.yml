@@ -27,3 +27,12 @@ logging:
   level:
     com.cashier.server: info
     org.springframework.web: warn
+
+erp:
+  api:
+    base-url: ${ERP_BASE_URL:http://erp.example.com/api}
+    app-key: ${ERP_APP_KEY:your_app_key}
+    app-secret: ${ERP_APP_SECRET:your_app_secret}
+    timeout: ${ERP_TIMEOUT:30000}
+    retry-times: ${ERP_RETRY_TIMES:3}
+    retry-interval: ${ERP_RETRY_INTERVAL:5000}

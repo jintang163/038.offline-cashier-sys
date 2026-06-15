@@ -2,6 +2,7 @@ package com.cashier.server.service.order;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.service.IService;
+import com.cashier.server.dto.OrderSyncDTO;
 import com.cashier.server.entity.order.Order;
 import com.cashier.server.entity.order.OrderItem;
 import com.cashier.server.entity.order.OrderPayment;
@@ -35,4 +36,6 @@ public interface OrderService extends IService<Order> {
     boolean retrySync(Long orderId);
 
     Map<String, Object> batchCreateOrders(List<Map<String, Object>> orderList);
+
+    Map<String, Object> batchSyncOrders(List<OrderSyncDTO> orderList);
 }

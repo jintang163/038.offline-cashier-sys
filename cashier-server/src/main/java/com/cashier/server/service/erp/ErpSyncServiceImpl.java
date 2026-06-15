@@ -1,7 +1,9 @@
 package com.cashier.server.service.erp;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.cashier.server.common.BusinessException;
 import com.cashier.server.entity.order.Order;
+import com.cashier.server.entity.order.SalesSummary;
 import com.cashier.server.entity.product.Product;
 import com.cashier.server.entity.product.ProductCategory;
 import com.cashier.server.service.order.OrderService;
@@ -16,6 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -23,6 +26,9 @@ import java.util.Map;
 public class ErpSyncServiceImpl implements ErpSyncService {
 
     private static final Logger log = LoggerFactory.getLogger(ErpSyncServiceImpl.class);
+
+    @Autowired
+    private ErpApiClient erpApiClient;
 
     @Autowired
     private ProductService productService;
@@ -41,10 +47,19 @@ public class ErpSyncServiceImpl implements ErpSyncService {
     public void syncProductsFromErp() {
         log.info("开始定时同步商品数据...");
         try {
-            log.info("商品数据同步完成");
-            webSocketService.broadcastProductUpdate("商品数据已更新");
+            List<Map<String, Object>> productList = pullProductsFromErp();
+            if (productList != null && !productList.isEmpty()) {
+                for (Map<String, Object> productData : productList) {
+                    syncOrUpdateProduct(productData);
+                }
+                log.info("商品数据同步完成, 数量: {}", productList.size());
+                webSocketService.broadcastProductUpdate("商品数据已更新");
+            } else {
+                log.info("未获取到需要同步的商品数据");
+            }
         } catch (Exception e) {
             log.error("商品数据同步失败", e);
+            throw new BusinessException("商品数据同步失败: " + e.getMessage());
         }
     }
 
@@ -53,10 +68,21 @@ public class ErpSyncServiceImpl implements ErpSyncService {
     public void syncStockFromErp() {
         log.info("开始定时同步库存数据...");
         try {
-            log.info("库存数据同步完成");
-            webSocketService.broadcastStockUpdate("库存数据已更新");
+            List<Map<String, Object>> stockList = pullStockFromErp();
+            if (stockList != null && !stockList.isEmpty()) {
+                for (Map<String, Object> stockData : stockList) {
+                    String erpGoodsId = stockData.get("erpGoodsId") != null ? stockData.get("erpGoodsId").toString() : null;
+                    Integer stock = stockData.get("stock") != null ? Integer.valueOf(stockData.get("stock").toString()) : 0;
+                    updateProductStock(erpGoodsId, stock);
+                }
+                log.info("库存数据同步完成, 数量: {}", stockList.size());
+                webSocketService.broadcastStockUpdate("库存数据已更新");
+            } else {
+                log.info("未获取到需要同步的库存数据");
+            }
         } catch (Exception e) {
             log.error("库存数据同步失败", e);
+            throw new BusinessException("库存数据同步失败: " + e.getMessage());
         }
     }
 
@@ -71,8 +97,16 @@ public class ErpSyncServiceImpl implements ErpSyncService {
         for (Order order : unsyncedOrders) {
             try {
                 orderService.incrementSyncAttempts(order.getId());
-                orderService.updateSyncStatus(order.getId(), 1, null);
-                successCount++;
+                boolean success = pushOrderToErp(order);
+                if (success) {
+                    orderService.updateSyncStatus(order.getId(), 1, null);
+                    successCount++;
+                    log.info("订单同步成功: orderId={}, orderNo={}", order.getId(), order.getOrderNo());
+                } else {
+                    orderService.updateSyncStatus(order.getId(), 2, "ERP接口返回失败");
+                    failCount++;
+                    log.warn("订单同步失败: orderId={}, orderNo={}, error=ERP接口返回失败", order.getId(), order.getOrderNo());
+                }
             } catch (Exception e) {
                 failCount++;
                 orderService.updateSyncStatus(order.getId(), 2, e.getMessage());
@@ -90,16 +124,108 @@ public class ErpSyncServiceImpl implements ErpSyncService {
         try {
             Order order = orderService.getById(orderId);
             if (order == null) {
+                log.error("订单不存在: orderId={}", orderId);
                 return false;
             }
             orderService.incrementSyncAttempts(orderId);
-            orderService.updateSyncStatus(orderId, 1, null);
-            webSocketService.broadcastOrderSyncUpdate("订单 " + order.getOrderNo() + " 同步成功");
-            return true;
+            boolean success = pushOrderToErp(order);
+            if (success) {
+                orderService.updateSyncStatus(orderId, 1, null);
+                webSocketService.broadcastOrderSyncUpdate("订单 " + order.getOrderNo() + " 同步成功");
+                log.info("订单同步成功: orderId={}, orderNo={}", orderId, order.getOrderNo());
+                return true;
+            } else {
+                orderService.updateSyncStatus(orderId, 2, "ERP接口返回失败");
+                log.warn("订单同步失败: orderId={}, orderNo={}, error=ERP接口返回失败", orderId, order.getOrderNo());
+                return false;
+            }
         } catch (Exception e) {
             orderService.updateSyncStatus(orderId, 2, e.getMessage());
             log.error("订单同步失败: orderId={}, error={}", orderId, e.getMessage());
             return false;
+        }
+    }
+
+    @Override
+    public List<Map<String, Object>> pullProductsFromErp() {
+        log.info("从ERP拉取商品数据...");
+        try {
+            List<Map<String, Object>> products = erpApiClient.getProducts();
+            log.info("从ERP拉取商品数据成功, 数量: {}", products.size());
+            return products;
+        } catch (Exception e) {
+            log.error("从ERP拉取商品数据失败", e);
+            throw new BusinessException("从ERP拉取商品数据失败: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public List<Map<String, Object>> pullStockFromErp() {
+        log.info("从ERP拉取库存数据...");
+        try {
+            List<Map<String, Object>> stockList = erpApiClient.getStock();
+            log.info("从ERP拉取库存数据成功, 数量: {}", stockList.size());
+            return stockList;
+        } catch (Exception e) {
+            log.error("从ERP拉取库存数据失败", e);
+            throw new BusinessException("从ERP拉取库存数据失败: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public boolean pushOrderToErp(Order order) {
+        if (order == null) {
+            throw new BusinessException("订单不能为空");
+        }
+        log.info("推送订单到ERP: orderId={}, orderNo={}", order.getId(), order.getOrderNo());
+        try {
+            Map<String, Object> response = erpApiClient.createOrder(order);
+            Integer code = response.get("code") != null ? Integer.valueOf(response.get("code").toString()) : null;
+            if (code != null && code == 200) {
+                log.info("推送订单到ERP成功: orderId={}, orderNo={}", order.getId(), order.getOrderNo());
+                return true;
+            } else {
+                String message = response.get("message") != null ? response.get("message").toString() : "未知错误";
+                log.warn("推送订单到ERP返回失败: orderId={}, code={}, message={}", order.getId(), code, message);
+                return false;
+            }
+        } catch (Exception e) {
+            log.error("推送订单到ERP失败: orderId={}, error={}", order.getId(), e.getMessage());
+            throw new BusinessException("推送订单到ERP失败: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public boolean pushSalesSummaryToErp(List<SalesSummary> list) {
+        if (list == null || list.isEmpty()) {
+            log.warn("销售汇总数据为空，跳过推送");
+            return true;
+        }
+        log.info("推送销售汇总到ERP, 数量: {}", list.size());
+        try {
+            List<Map<String, Object>> summaryList = new ArrayList<>();
+            for (SalesSummary summary : list) {
+                Map<String, Object> map = new java.util.HashMap<>();
+                map.put("erpGoodsId", summary.getErpGoodsId());
+                map.put("productName", summary.getProductName());
+                map.put("quantity", summary.getQuantity());
+                map.put("totalAmount", summary.getTotalAmount());
+                map.put("orderDate", summary.getOrderDate());
+                summaryList.add(map);
+            }
+            Map<String, Object> response = erpApiClient.pushSalesSummary(summaryList);
+            Integer code = response.get("code") != null ? Integer.valueOf(response.get("code").toString()) : null;
+            if (code != null && code == 200) {
+                log.info("推送销售汇总到ERP成功, 数量: {}", list.size());
+                return true;
+            } else {
+                String message = response.get("message") != null ? response.get("message").toString() : "未知错误";
+                log.warn("推送销售汇总到ERP返回失败, code={}, message={}", code, message);
+                return false;
+            }
+        } catch (Exception e) {
+            log.error("推送销售汇总到ERP失败", e);
+            throw new BusinessException("推送销售汇总到ERP失败: " + e.getMessage());
         }
     }
 

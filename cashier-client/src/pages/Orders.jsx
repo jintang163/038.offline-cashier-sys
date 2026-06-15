@@ -26,7 +26,7 @@ import {
   CloudUploadOutlined,
 } from '@ant-design/icons'
 import AppLayout from '../components/AppLayout'
-import db from '../db/dexie'
+import db from '../utils/db'
 import syncService from '../services/syncService'
 import useNetworkStatus from '../hooks/useNetwork'
 import dayjs from 'dayjs'

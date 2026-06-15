@@ -4,16 +4,21 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.cashier.server.dto.ProductSyncDTO;
 import com.cashier.server.entity.product.Product;
 import com.cashier.server.entity.product.ProductStock;
 import com.cashier.server.mapper.product.ProductMapper;
+import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 public class ProductServiceImpl extends ServiceImpl<ProductMapper, Product> implements ProductService {
@@ -103,5 +108,25 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper, Product> impl
             productStockService.updateById(productStock);
         }
         return true;
+    }
+
+    @Override
+    public List<ProductSyncDTO> getProductSyncList(LocalDateTime updateTime, Integer status) {
+        LambdaQueryWrapper<Product> wrapper = new LambdaQueryWrapper<>();
+        if (updateTime != null) {
+            wrapper.ge(Product::getUpdateTime, updateTime);
+        }
+        if (status != null) {
+            wrapper.eq(Product::getStatus, status);
+        }
+        wrapper.orderByAsc(Product::getSort);
+        List<Product> products = list(wrapper);
+        return products.stream().map(this::convertToSyncDTO).collect(Collectors.toList());
+    }
+
+    private ProductSyncDTO convertToSyncDTO(Product product) {
+        ProductSyncDTO dto = new ProductSyncDTO();
+        BeanUtils.copyProperties(product, dto);
+        return dto;
     }
 }
