@@ -22,19 +22,21 @@ class IntelligentRecommendService {
     this._cacheTimestamps.set(key, Date.now())
   }
 
-  async getHotProducts(days = 7, limit = 20) {
-    const cacheKey = `hot:${days}:${limit}`
+  async getHotProducts(days = 7, limit = 20, period = null) {
+    const cacheKey = `hot:${days}:${limit}:${period || 'all'}`
     const cached = this._getCache(cacheKey)
     if (cached) return cached
 
-    const dbCache = await db.getRecommendCache('hot_products', `${days}d`)
+    const cacheType = period ? `hot_products_${period}` : 'hot_products'
+    const cachePeriod = period ? `${period}_${days}d` : `${days}d`
+    const dbCache = await db.getRecommendCache(cacheType, cachePeriod)
     if (dbCache && dbCache.length > 0) {
       const result = dbCache.slice(0, limit)
       this._setCache(cacheKey, result)
       return result
     }
 
-    const ranking = await db.getProductSalesRanking(days, 100)
+    const ranking = await db.getProductSalesRanking(days, 100, period)
     const products = await db.getProducts({ pageSize: 1000 })
     const productMap = new Map(
       (products.items || products).map((p) => [p.id, p])
@@ -55,20 +57,25 @@ class IntelligentRecommendService {
       }
     })
 
-    await db.setRecommendCache('hot_products', `${days}d`, result, CACHE_TTL_HOURS)
+    await db.setRecommendCache(cacheType, cachePeriod, result, CACHE_TTL_HOURS)
     const limited = result.slice(0, limit)
     this._setCache(cacheKey, limited)
     return limited
   }
 
-  async getFrequentlyBoughtTogether(productId, days = 14, limit = 6) {
-    const cacheKey = `fbt:${productId}:${days}:${limit}`
+  async getFrequentlyBoughtTogether(productId, days = 14, limit = 6, minCoOccurrence = 2) {
+    const cacheKey = `fbt:${productId}:${days}:${limit}:${minCoOccurrence}`
     const cached = this._getCache(cacheKey)
     if (cached) return cached
 
     const orderGroups = await db.getOrderItemGroups(days)
     const coOccurrence = new Map()
     const productInfo = new Map()
+
+    const allProducts = await db.getProducts({ pageSize: 1000 })
+    const productMap = new Map(
+      (allProducts.items || allProducts).map((p) => [p.id, p])
+    )
 
     let targetCount = 0
     for (const items of orderGroups) {
@@ -98,14 +105,20 @@ class IntelligentRecommendService {
     const ranked = Array.from(coOccurrence.entries())
       .map(([pid, count]) => {
         const info = productInfo.get(pid) || {}
+        const product = productMap.get(pid) || {}
         const support = count / targetCount
         return {
           ...info,
+          image: product.image,
+          stock: product.stock ?? 999,
+          status: product.status ?? 1,
           co_occurrence_count: count,
           support_ratio: Number(support.toFixed(4)),
           confidence: this._calculateConfidence(count, days),
         }
       })
+      .filter((r) => r.co_occurrence_count >= minCoOccurrence)
+      .filter((r) => r.status === 1 && (r.stock || 0) > 0)
       .sort((a, b) => b.co_occurrence_count - a.co_occurrence_count)
       .slice(0, limit)
 
@@ -279,13 +292,20 @@ class IntelligentRecommendService {
     else if (hour >= 21 || hour < 6) period = 'night'
 
     const isWeekend = day === 0 || day === 6
+    const days = isWeekend ? 14 : 7
 
-    const hot = await this.getHotProducts(isWeekend ? 14 : 7, 20)
+    let products = await this.getHotProducts(days, 20, period)
+
+    if (!products || products.length < 3) {
+      products = await this.getHotProducts(days, 20, null)
+    }
+
     return {
       period,
       is_weekend: isWeekend,
       label: this._getPeriodLabel(period, isWeekend),
-      products: hot,
+      period_specific: true,
+      products,
     }
   }
 

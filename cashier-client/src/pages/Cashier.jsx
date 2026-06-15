@@ -157,6 +157,14 @@ function Cashier() {
     return () => clearTimeout(timer)
   }, [cart, loadCartRecommendations])
 
+  useEffect(() => {
+    if (!isOnline && !showRecommend) {
+      setShowRecommend(true)
+      setActiveCategory(null)
+      message.info('已进入离线模式，为您展示智能推荐')
+    }
+  }, [isOnline])
+
   const handleRecommendClick = () => {
     setShowRecommend(true)
     setActiveCategory(null)
@@ -517,6 +525,16 @@ function Cashier() {
       setPayModalVisible(false)
       setSelectedCardId(null)
       loadProducts(activeCategory)
+
+      try {
+        recommendService.invalidateCache()
+        await Promise.all([
+          loadRecommendData(),
+          loadStockAlerts(),
+        ])
+      } catch (e) {
+        console.warn('Refresh recommend after payment failed:', e)
+      }
 
       if (isOnline) {
         try {

@@ -963,7 +963,7 @@ class DexieCache {
     })
   }
 
-  async getProductSalesRanking(days = 7, limit = 50) {
+  async getProductSalesRanking(days = 7, limit = 50, period = null) {
     const startDate = new Date()
     startDate.setDate(startDate.getDate() - days)
     const startStr = startDate.toISOString()
@@ -975,6 +975,15 @@ class DexieCache {
 
     const productMap = new Map()
     for (const item of orderItems) {
+      if (period && item.created_at) {
+        try {
+          const itemHour = new Date(item.created_at).getHours()
+          const itemPeriod = this._getPeriodByHour(itemHour)
+          if (itemPeriod !== period) continue
+        } catch (e) {
+          // ignore parse errors
+        }
+      }
       if (!productMap.has(item.product_id)) {
         productMap.set(item.product_id, {
           product_id: item.product_id,
@@ -1007,6 +1016,15 @@ class DexieCache {
       .slice(0, limit)
 
     return result
+  }
+
+  _getPeriodByHour(hour) {
+    if (hour >= 6 && hour < 10) return 'breakfast'
+    if (hour >= 10 && hour < 14) return 'lunch'
+    if (hour >= 14 && hour < 17) return 'afternoon'
+    if (hour >= 17 && hour < 21) return 'dinner'
+    if (hour >= 21 || hour < 6) return 'night'
+    return 'general'
   }
 
   async getOrderItemGroups(days = 14, minSupport = 3) {
