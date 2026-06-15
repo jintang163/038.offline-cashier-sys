@@ -384,6 +384,111 @@ class ApiService {
     })
   }
 
+  async getPrinters() {
+    return this.request(
+      {
+        url: '/printer/list',
+        method: 'get',
+      },
+      { offlineQueue: false }
+    )
+  }
+
+  async getPrinterSyncList(params) {
+    return this.request(
+      {
+        url: '/printer/sync-list',
+        method: 'get',
+        params,
+      },
+      { offlineQueue: false }
+    )
+  }
+
+  async getPrintRules() {
+    return this.request(
+      {
+        url: '/printer/rule/list',
+        method: 'get',
+      },
+      { offlineQueue: false }
+    )
+  }
+
+  async getPrintRuleSyncList(params) {
+    return this.request(
+      {
+        url: '/printer/rule/sync-list',
+        method: 'get',
+        params,
+      },
+      { offlineQueue: false }
+    )
+  }
+
+  async getPrintTemplates() {
+    return this.request(
+      {
+        url: '/printer/template/list',
+        method: 'get',
+      },
+      { offlineQueue: false }
+    )
+  }
+
+  async getPrintTemplateSyncList(params) {
+    return this.request(
+      {
+        url: '/printer/template/sync-list',
+        method: 'get',
+        params,
+      },
+      { offlineQueue: false }
+    )
+  }
+
+  async savePrinter(printer) {
+    return this.request({
+      url: '/printer',
+      method: printer.id ? 'put' : 'post',
+      data: printer,
+    })
+  }
+
+  async savePrintRule(rule) {
+    return this.request({
+      url: '/printer/rule',
+      method: rule.id ? 'put' : 'post',
+      data: rule,
+    })
+  }
+
+  async savePrintTemplate(template) {
+    return this.request({
+      url: '/printer/template',
+      method: template.id ? 'put' : 'post',
+      data: template,
+    })
+  }
+
+  async testPrinter(printerId) {
+    return this.request(
+      {
+        url: `/printer/${printerId}/test`,
+        method: 'post',
+      },
+      { offlineQueue: false }
+    )
+  }
+
+  async batchSyncPrintHistory(records) {
+    return this.request({
+      url: '/printer/history/batch-sync',
+      method: 'post',
+      data: records,
+    })
+  }
+
   get baseURL() {
     return baseURL
   }

@@ -7,6 +7,7 @@ import { initMockData } from '../db/mockData'
 import useNetworkStatus from '../hooks/useNetwork'
 import syncService from '../services/syncService'
 import memberService from '../services/memberService'
+import kitchenPrintService from '../services/kitchenPrintService'
 import recommendService from '../services/intelligentRecommendService'
 import dayjs from 'dayjs'
 
@@ -518,6 +519,13 @@ function Cashier() {
       const order = await db.createOrder(orderData)
 
       message.success(`订单 ${orderNo} 创建成功`)
+
+      try {
+        await kitchenPrintService.printOrder({ ...orderData, order_no: orderNo, id: order?.id })
+      } catch (printErr) {
+        console.warn('厨房打印提交失败，订单已保存:', printErr)
+        message.warning('厨房打印提交失败，可在设置中重试')
+      }
       setCart([])
       setDiscount(0)
       setUsePoints(false)

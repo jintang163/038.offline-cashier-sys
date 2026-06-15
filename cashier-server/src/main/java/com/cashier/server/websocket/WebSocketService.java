@@ -63,6 +63,50 @@ public class WebSocketService {
         WebSocketServer.sendMessage(clientId, json.toJSONString());
     }
 
+    public void broadcastPrinterConfigUpdate(Object data) {
+        JSONObject json = new JSONObject();
+        json.put("type", "printer_config_update");
+        json.put("payload", data);
+        json.put("timestamp", System.currentTimeMillis());
+        WebSocketServer.broadcast(json.toJSONString());
+        log.info("广播打印机配置更新通知");
+    }
+
+    public void broadcastPrintRuleUpdate(Object data) {
+        JSONObject json = new JSONObject();
+        json.put("type", "print_rule_update");
+        json.put("payload", data);
+        json.put("timestamp", System.currentTimeMillis());
+        WebSocketServer.broadcast(json.toJSONString());
+        log.info("广播打印规则更新通知");
+    }
+
+    public void broadcastPrintTemplateUpdate(Object data) {
+        JSONObject json = new JSONObject();
+        json.put("type", "print_template_update");
+        json.put("payload", data);
+        json.put("timestamp", System.currentTimeMillis());
+        WebSocketServer.broadcast(json.toJSONString());
+        log.info("广播打印模板更新通知");
+    }
+
+    public void broadcastReprintOrder(Object data) {
+        JSONObject json = new JSONObject();
+        json.put("type", "reprint_order");
+        json.put("payload", data);
+        json.put("timestamp", System.currentTimeMillis());
+        WebSocketServer.broadcast(json.toJSONString());
+        log.info("广播订单补打通知: data={}", data);
+    }
+
+    public void sendPrintResult(String clientId, Object data) {
+        JSONObject json = new JSONObject();
+        json.put("type", "print_result");
+        json.put("payload", data);
+        json.put("timestamp", System.currentTimeMillis());
+        WebSocketServer.sendMessage(clientId, json.toJSONString());
+    }
+
     public int getOnlineCount() {
         return WebSocketServer.getOnlineCount();
     }

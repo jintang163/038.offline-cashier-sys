@@ -216,7 +216,121 @@ INSERT INTO sys_user (username, password, nickname, phone, email, status, create
 ('admin', 'e10adc3949ba59abbe56e057f20f883e', '管理员', '13800138000', 'admin@example.com', 1, NOW(), NOW()),
 ('cashier', 'e10adc3949ba59abbe56e057f20f883e', '收银员', '13800138001', 'cashier@example.com', 1, NOW(), NOW());
 
+-- 打印机表
+DROP TABLE IF EXISTS printer;
+CREATE TABLE printer (
+    id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    printer_code VARCHAR(50) NOT NULL COMMENT '打印机编码',
+    printer_name VARCHAR(100) NOT NULL COMMENT '打印机名称',
+    printer_type VARCHAR(20) DEFAULT 'kitchen' COMMENT '打印机类型：kitchen厨房 receipt收银',
+    connection_type VARCHAR(20) DEFAULT 'network' COMMENT '连接方式：network网络 usb蓝牙 bluetooth蓝牙',
+    ip_address VARCHAR(50) DEFAULT NULL COMMENT 'IP地址',
+    port INT DEFAULT 9100 COMMENT '端口号',
+    usb_path VARCHAR(200) DEFAULT NULL COMMENT 'USB路径',
+    bluetooth_address VARCHAR(100) DEFAULT NULL COMMENT '蓝牙地址',
+    status TINYINT DEFAULT 1 COMMENT '状态：0禁用 1启用',
+    is_default TINYINT DEFAULT 0 COMMENT '是否默认：0否 1是',
+    sort INT DEFAULT 0 COMMENT '排序',
+    create_time DATETIME DEFAULT NULL COMMENT '创建时间',
+    update_time DATETIME DEFAULT NULL COMMENT '更新时间',
+    is_deleted TINYINT DEFAULT 0 COMMENT '逻辑删除：0未删除 1已删除',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_printer_code (printer_code),
+    KEY idx_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='打印机表';
+
+-- 打印分单规则表
+DROP TABLE IF EXISTS print_rule;
+CREATE TABLE print_rule (
+    id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    rule_code VARCHAR(50) NOT NULL COMMENT '规则编码',
+    rule_name VARCHAR(100) NOT NULL COMMENT '规则名称',
+    category_id BIGINT DEFAULT NULL COMMENT '菜品分类ID',
+    category_name VARCHAR(100) DEFAULT NULL COMMENT '菜品分类名称',
+    printer_id BIGINT DEFAULT NULL COMMENT '打印机ID',
+    printer_code VARCHAR(50) DEFAULT NULL COMMENT '打印机编码',
+    copies INT DEFAULT 1 COMMENT '打印份数',
+    priority INT DEFAULT 0 COMMENT '优先级，数值越大优先级越高',
+    sort INT DEFAULT 0 COMMENT '排序',
+    status TINYINT DEFAULT 1 COMMENT '状态：0禁用 1启用',
+    create_time DATETIME DEFAULT NULL COMMENT '创建时间',
+    update_time DATETIME DEFAULT NULL COMMENT '更新时间',
+    is_deleted TINYINT DEFAULT 0 COMMENT '逻辑删除：0未删除 1已删除',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_rule_code (rule_code),
+    KEY idx_category_id (category_id),
+    KEY idx_printer_id (printer_id),
+    KEY idx_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='打印分单规则表';
+
+-- 打印模板表
+DROP TABLE IF EXISTS print_template;
+CREATE TABLE print_template (
+    id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    template_code VARCHAR(50) NOT NULL COMMENT '模板编码',
+    template_name VARCHAR(100) NOT NULL COMMENT '模板名称',
+    template_type VARCHAR(20) DEFAULT 'kitchen' COMMENT '模板类型：kitchen厨房 receipt收银',
+    content TEXT DEFAULT NULL COMMENT '模板内容JSON',
+    paper_width INT DEFAULT 80 COMMENT '纸张宽度mm',
+    font_size INT DEFAULT 12 COMMENT '字体大小',
+    header VARCHAR(500) DEFAULT NULL COMMENT '页眉内容',
+    footer VARCHAR(500) DEFAULT NULL COMMENT '页脚内容',
+    is_default TINYINT DEFAULT 0 COMMENT '是否默认：0否 1是',
+    status TINYINT DEFAULT 1 COMMENT '状态：0禁用 1启用',
+    create_time DATETIME DEFAULT NULL COMMENT '创建时间',
+    update_time DATETIME DEFAULT NULL COMMENT '更新时间',
+    is_deleted TINYINT DEFAULT 0 COMMENT '逻辑删除：0未删除 1已删除',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_template_code (template_code),
+    KEY idx_template_type (template_type),
+    KEY idx_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='打印模板表';
+
+-- 打印历史记录表
+DROP TABLE IF EXISTS print_history;
+CREATE TABLE print_history (
+    id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    queue_id BIGINT DEFAULT NULL COMMENT '打印队列ID',
+    order_id BIGINT DEFAULT NULL COMMENT '订单ID',
+    order_no VARCHAR(64) DEFAULT NULL COMMENT '订单号',
+    printer_id BIGINT DEFAULT NULL COMMENT '打印机ID',
+    printer_code VARCHAR(50) DEFAULT NULL COMMENT '打印机编码',
+    category_id BIGINT DEFAULT NULL COMMENT '菜品分类ID',
+    items_count INT DEFAULT 0 COMMENT '菜品数量',
+    copies INT DEFAULT 1 COMMENT '打印份数',
+    print_status TINYINT DEFAULT 0 COMMENT '打印状态：0待打印 1打印中 2成功 3失败 4已取消',
+    print_time DATETIME DEFAULT NULL COMMENT '打印时间',
+    error_message VARCHAR(500) DEFAULT NULL COMMENT '错误信息',
+    cashier_id BIGINT DEFAULT NULL COMMENT '收银员ID',
+    cashier_name VARCHAR(50) DEFAULT NULL COMMENT '收银员姓名',
+    create_time DATETIME DEFAULT NULL COMMENT '创建时间',
+    update_time DATETIME DEFAULT NULL COMMENT '更新时间',
+    is_deleted TINYINT DEFAULT 0 COMMENT '逻辑删除：0未删除 1已删除',
+    PRIMARY KEY (id),
+    KEY idx_order_id (order_id),
+    KEY idx_printer_id (printer_id),
+    KEY idx_print_status (print_status),
+    KEY idx_create_time (create_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='打印历史记录表';
+
 -- 初始用户角色关联数据
 INSERT INTO sys_user_role (user_id, role_id, role_code, role_name, create_time, update_time) VALUES
 (1, 1, 'admin', '管理员', NOW(), NOW()),
 (2, 2, 'cashier', '收银员', NOW(), NOW());
+
+INSERT INTO printer (printer_code, printer_name, printer_type, connection_type, ip_address, port, status, is_default, sort, create_time, update_time) VALUES
+('KITCHEN_HOT', '热菜厨房打印机', 'kitchen', 'network', '192.168.1.101', 9100, 1, 0, 1, NOW(), NOW()),
+('KITCHEN_COLD', '凉菜厨房打印机', 'kitchen', 'network', '192.168.1.102', 9100, 1, 0, 2, NOW(), NOW()),
+('KITCHEN_DRINK', '饮品吧台打印机', 'kitchen', 'network', '192.168.1.103', 9100, 1, 0, 3, NOW(), NOW()),
+('RECEIPT_MAIN', '收银前台打印机', 'receipt', 'usb', NULL, NULL, 1, 1, 4, NOW(), NOW());
+
+INSERT INTO print_rule (rule_code, rule_name, category_id, category_name, printer_id, printer_code, copies, priority, sort, status, create_time, update_time) VALUES
+('RULE_HOT', '热菜分单规则', 1, '热菜', 1, 'KITCHEN_HOT', 2, 10, 1, 1, NOW(), NOW()),
+('RULE_COLD', '凉菜分单规则', 2, '凉菜', 2, 'KITCHEN_COLD', 1, 10, 2, 1, NOW(), NOW()),
+('RULE_STAPLE', '主食分单规则', 3, '主食', 1, 'KITCHEN_HOT', 1, 5, 3, 1, NOW(), NOW()),
+('RULE_DRINK', '饮品分单规则', 4, '饮品', 3, 'KITCHEN_DRINK', 1, 10, 4, 1, NOW(), NOW()),
+('RULE_DESSERT', '甜品分单规则', 5, '甜品', 3, 'KITCHEN_DRINK', 1, 5, 5, 1, NOW(), NOW());
+
+INSERT INTO print_template (template_code, template_name, template_type, paper_width, font_size, header, footer, is_default, status, create_time, update_time) VALUES
+('TPL_KITCHEN_DEFAULT', '厨房小票默认模板', 'kitchen', 58, 12, '{shop_name}', '--- 厨房联 ---', 1, 1, NOW(), NOW()),
+('TPL_RECEIPT_DEFAULT', '收银小票默认模板', 'receipt', 80, 12, '{shop_name}', '谢谢惠顾', 1, 1, NOW(), NOW());

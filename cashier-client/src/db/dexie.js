@@ -2,11 +2,11 @@ import Dexie from 'dexie'
 
 const db = new Dexie('CashierCacheDB')
 
-db.version(7).stores({
+db.version(8).stores({
   products: '++id, erp_goods_id, product_name, category_id, category_name, barcode, price, original_price, unit, image, description, stock, status, sort, created_at, updated_at',
   categories: '++id, name, sort, status, created_at, updated_at',
   orders: '++id, order_no, erp_order_id, total_amount, discount_amount, pay_amount, pay_type, pay_status, order_status, sync_status, sync_attempts, sync_error, cashier_id, cashier_name, member_id, member_name, remark, created_at, synced_at',
-  order_items: '++id, order_id, product_id, erp_goods_id, product_name, barcode, image, price, quantity, subtotal, total_amount, discount_amount, pay_amount, created_at',
+  order_items: '++id, order_id, product_id, erp_goods_id, product_name, barcode, image, price, quantity, subtotal, total_amount, discount_amount, pay_amount, category_id, created_at',
   order_payments: '++id, order_id, payment_no, pay_type, pay_amount, pay_status, pay_time, transaction_id, created_at',
   sales_summary: '++id, erp_goods_id, product_name, quantity, total_amount, order_date, sync_status, created_at',
   offlineQueue: '++id, action, status, retry_count, created_at',
@@ -20,6 +20,11 @@ db.version(7).stores({
   member_card_records: '++id, record_no, card_id, card_no, member_id, trade_type, trade_amount, before_balance, after_balance, before_reserved, after_reserved, order_no, related_record_no, sync_status, sync_attempts, sync_error, cashier_id, created_at',
   recommend_cache: '++id, [type+period], type, period, data, generated_at, expires_at',
   stock_forecast: '++id, product_id, product_name, forecast_days, forecast_qty, current_stock, suggested_purchase, confidence, generated_at',
+  printers: '++id, printer_code, printer_name, printer_type, connection_type, ip_address, port, usb_path, bluetooth_address, status, is_default, sync_status, last_sync_at',
+  print_rules: '++id, rule_code, rule_name, category_id, category_name, printer_id, printer_code, copies, priority, sort, status, sync_status, last_sync_at',
+  print_templates: '++id, template_code, template_name, template_type, content, paper_width, font_size, header, footer, is_default, status, sync_status, last_sync_at',
+  print_queue: '++id, queue_no, order_id, order_no, printer_id, printer_code, printer_name, category_id, category_name, items, total_amount, copies, template_code, print_status, retry_count, error_message, printed_at, created_at, synced_at',
+  print_history: '++id, queue_id, order_id, order_no, printer_id, printer_code, category_id, items_count, copies, print_status, print_time, cashier_id, cashier_name, created_at',
 })
 
 class DexieCache {
@@ -1149,6 +1154,256 @@ class DexieCache {
     await db.stock_forecast.clear()
   }
 
+  async getPrinters() {
+    return await db.printers.where('status').equals(1).sortBy('sort')
+  }
+
+  async getPrinterById(id) {
+    return await db.printers.get(id)
+  }
+
+  async getPrinterByCode(code) {
+    return await db.printers.where('printer_code').equals(code).first()
+  }
+
+  async getDefaultPrinter() {
+    return await db.printers.where('is_default').equals(1).first()
+  }
+
+  async savePrinter(printer) {
+    const existing = printer.id ? await db.printers.get(printer.id) : null
+    if (existing) {
+      await db.printers.update(printer.id, { ...printer, updated_at: new Date().toISOString() })
+      return printer.id
+    } else {
+      return await db.printers.add({
+        ...printer,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+    }
+  }
+
+  async bulkUpsertPrinters(printers) {
+    if (!printers || printers.length === 0) return
+    for (const printer of printers) {
+      const existing = printer.printer_code
+        ? await db.printers.where('printer_code').equals(printer.printer_code).first()
+        : printer.id
+        ? await db.printers.get(printer.id)
+        : null
+
+      if (existing) {
+        await db.printers.update(existing.id, { ...printer, id: existing.id, sync_status: 1, last_sync_at: new Date().toISOString() })
+      } else {
+        await db.printers.add({ ...printer, sync_status: 1, last_sync_at: new Date().toISOString() })
+      }
+    }
+  }
+
+  async getPrintRules() {
+    return await db.print_rules.where('status').equals(1).sortBy('sort')
+  }
+
+  async getPrintRuleByCategory(categoryId) {
+    return await db.print_rules
+      .where('status')
+      .equals(1)
+      .filter((r) => r.category_id === categoryId)
+      .sortBy('priority')
+  }
+
+  async getPrintRulesByPrinter(printerId) {
+    return await db.print_rules
+      .where('status')
+      .equals(1)
+      .filter((r) => r.printer_id === printerId)
+      .sortBy('sort')
+  }
+
+  async savePrintRule(rule) {
+    const existing = rule.id ? await db.print_rules.get(rule.id) : null
+    if (existing) {
+      await db.print_rules.update(rule.id, { ...rule, updated_at: new Date().toISOString() })
+      return rule.id
+    } else {
+      return await db.print_rules.add({
+        ...rule,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+    }
+  }
+
+  async bulkUpsertPrintRules(rules) {
+    if (!rules || rules.length === 0) return
+    for (const rule of rules) {
+      const existing = rule.rule_code
+        ? await db.print_rules.where('rule_code').equals(rule.rule_code).first()
+        : rule.id
+        ? await db.print_rules.get(rule.id)
+        : null
+
+      if (existing) {
+        await db.print_rules.update(existing.id, { ...rule, id: existing.id, sync_status: 1, last_sync_at: new Date().toISOString() })
+      } else {
+        await db.print_rules.add({ ...rule, sync_status: 1, last_sync_at: new Date().toISOString() })
+      }
+    }
+  }
+
+  async getPrintTemplates() {
+    return await db.print_templates.where('status').equals(1).sortBy('template_code')
+  }
+
+  async getDefaultPrintTemplate(templateType = 'kitchen') {
+    return await db.print_templates
+      .where('status')
+      .equals(1)
+      .filter((t) => t.is_default === 1 && t.template_type === templateType)
+      .first()
+  }
+
+  async getPrintTemplateByCode(code) {
+    return await db.print_templates.where('template_code').equals(code).first()
+  }
+
+  async savePrintTemplate(template) {
+    const existing = template.id ? await db.print_templates.get(template.id) : null
+    if (existing) {
+      await db.print_templates.update(template.id, { ...template, updated_at: new Date().toISOString() })
+      return template.id
+    } else {
+      return await db.print_templates.add({
+        ...template,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+    }
+  }
+
+  async bulkUpsertPrintTemplates(templates) {
+    if (!templates || templates.length === 0) return
+    for (const template of templates) {
+      const existing = template.template_code
+        ? await db.print_templates.where('template_code').equals(template.template_code).first()
+        : template.id
+        ? await db.print_templates.get(template.id)
+        : null
+
+      if (existing) {
+        await db.print_templates.update(existing.id, { ...template, id: existing.id, sync_status: 1, last_sync_at: new Date().toISOString() })
+      } else {
+        await db.print_templates.add({ ...template, sync_status: 1, last_sync_at: new Date().toISOString() })
+      }
+    }
+  }
+
+  async addPrintQueue(printJob) {
+    const queueNo = printJob.queue_no || `PQ${Date.now()}${Math.random().toString(36).substr(2, 6)}`
+    const data = {
+      ...printJob,
+      queue_no: queueNo,
+      print_status: printJob.print_status ?? 0,
+      retry_count: printJob.retry_count ?? 0,
+      created_at: printJob.created_at || new Date().toISOString(),
+    }
+    const id = await db.print_queue.add(data)
+    return { id, queue_no: queueNo }
+  }
+
+  async getPrintQueue(status = null) {
+    let collection = db.print_queue.orderBy('id')
+    if (status !== null && status !== undefined) {
+      collection = db.print_queue.where('print_status').equals(status)
+    }
+    return await collection.sortBy('created_at')
+  }
+
+  async getPendingPrintQueue() {
+    return await db.print_queue
+      .where('print_status')
+      .belowOrEqual(1)
+      .sortBy('created_at')
+  }
+
+  async getPrintQueueByOrder(orderId) {
+    return await db.print_queue.where('order_id').equals(orderId).sortBy('created_at')
+  }
+
+  async getPrintQueueById(id) {
+    const record = await db.print_queue.get(id)
+    if (record && typeof record.items === 'string') {
+      try {
+        record.items = JSON.parse(record.items)
+      } catch (e) {
+        record.items = []
+      }
+    }
+    return record
+  }
+
+  async updatePrintQueueStatus(id, status, errorMessage = null) {
+    const updateData = { print_status: status }
+    if (status === 2) {
+      updateData.printed_at = new Date().toISOString()
+    }
+    if (errorMessage) {
+      updateData.error_message = errorMessage
+      const record = await db.print_queue.get(id)
+      updateData.retry_count = (record?.retry_count || 0) + 1
+    }
+    return await db.print_queue.update(id, updateData)
+  }
+
+  async retryPrintQueue(id) {
+    return await db.print_queue.update(id, {
+      print_status: 0,
+      error_message: null,
+    })
+  }
+
+  async addPrintHistory(history) {
+    return await db.print_history.add({
+      ...history,
+      created_at: history.created_at || new Date().toISOString(),
+    })
+  }
+
+  async getPrintHistory(params = {}) {
+    const { page = 1, pageSize = 20, startDate, endDate, printerId, orderNo } = params
+    let collection = db.print_history.orderBy('id').reverse()
+
+    if (startDate) {
+      collection = collection.filter((h) => h.created_at >= startDate)
+    }
+    if (endDate) {
+      collection = collection.filter((h) => h.created_at <= endDate)
+    }
+    if (printerId) {
+      collection = collection.filter((h) => h.printer_id === printerId)
+    }
+    if (orderNo) {
+      collection = collection.filter((h) => h.order_no?.includes(orderNo))
+    }
+
+    const allItems = await collection.toArray()
+    const items = allItems.slice((page - 1) * pageSize, page * pageSize)
+
+    return { items, total: allItems.length, page, pageSize }
+  }
+
+  async getUnsyncedPrintHistory(limit = 100) {
+    return await db.print_history
+      .filter((h) => !h.synced_at)
+      .limit(limit)
+      .sortBy('created_at')
+  }
+
+  async markPrintHistorySynced(id) {
+    return await db.print_history.update(id, { synced_at: new Date().toISOString() })
+  }
+
   async clearAll() {
     await db.products.clear()
     await db.categories.clear()
@@ -1167,6 +1422,11 @@ class DexieCache {
     await db.member_card_records.clear()
     await db.recommend_cache.clear()
     await db.stock_forecast.clear()
+    await db.printers.clear()
+    await db.print_rules.clear()
+    await db.print_templates.clear()
+    await db.print_queue.clear()
+    await db.print_history.clear()
     this.initialized = false
   }
 }

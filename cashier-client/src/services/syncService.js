@@ -555,6 +555,21 @@ class SyncService {
         failed: 0,
       }))
 
+      const printerConfigResult = await this.syncPrinterConfig().catch((e) => ({
+        success: false,
+        error: e.message,
+        printers: 0,
+        rules: 0,
+        templates: 0,
+      }))
+
+      const printHistoryResult = await this.syncPrintHistory().catch((e) => ({
+        success: false,
+        error: e.message,
+        success: 0,
+        failed: 0,
+      }))
+
       return {
         success: true,
         products: productResult,
@@ -563,6 +578,8 @@ class SyncService {
         orders: orderResult,
         pointRecords: pointRecordResult,
         memberCardRecords: cardRecordResult,
+        printerConfig: printerConfigResult,
+        printHistory: printHistoryResult,
       }
     } finally {
       this.syncing = false
@@ -620,6 +637,149 @@ class SyncService {
       } catch (error) {
         console.error('Auto sync failed:', error)
       }
+    }
+  }
+
+  async syncPrinterConfig() {
+    if (!navigator.onLine) {
+      throw new Error('OFFLINE')
+    }
+
+    this.emit('syncStart', { type: 'printerConfig' })
+    this.emit('statusChange', { type: 'printerConfig', status: 'syncing' })
+
+    try {
+      const lastSyncTime = await db.getSetting('lastPrinterConfigSyncTime')
+      const params = lastSyncTime ? { updateTime: lastSyncTime } : {}
+
+      const printerResponse = await api.getPrinterSyncList({ ...params, status: 1 })
+      const printers = printerResponse.data?.items || printerResponse.data || []
+
+      if (printers.length > 0) {
+        await db.bulkUpsertPrinters(printers)
+      }
+
+      const ruleResponse = await api.getPrintRuleSyncList({ ...params, status: 1 })
+      const rules = ruleResponse.data?.items || ruleResponse.data || []
+
+      if (rules.length > 0) {
+        await db.bulkUpsertPrintRules(rules)
+      }
+
+      const templateResponse = await api.getPrintTemplateSyncList({ ...params, status: 1 })
+      const templates = templateResponse.data?.items || templateResponse.data || []
+
+      if (templates.length > 0) {
+        await db.bulkUpsertPrintTemplates(templates)
+      }
+
+      await db.setSetting('lastPrinterConfigSyncTime', new Date().toISOString())
+      await db.addSyncRecord('printerConfig', 'success', {
+        printers: printers.length,
+        rules: rules.length,
+        templates: templates.length,
+      })
+
+      this.emit('syncComplete', {
+        type: 'printerConfig',
+        success: true,
+        count: printers.length + rules.length + templates.length,
+      })
+      this.emit('statusChange', { type: 'printerConfig', status: 'success' })
+
+      return { success: true, printers: printers.length, rules: rules.length, templates: templates.length }
+    } catch (error) {
+      await db.addSyncRecord('printerConfig', 'failed', { error: error.message })
+      this.emit('syncComplete', { type: 'printerConfig', success: false, error: error.message })
+      this.emit('statusChange', { type: 'printerConfig', status: 'failed', error: error.message })
+      throw error
+    }
+  }
+
+  async syncPrintHistory() {
+    if (!navigator.onLine) {
+      throw new Error('OFFLINE')
+    }
+
+    this.emit('syncStart', { type: 'printHistory' })
+    this.emit('statusChange', { type: 'printHistory', status: 'syncing' })
+
+    try {
+      const recordsToSync = await db.getUnsyncedPrintHistory(100)
+
+      if (recordsToSync.length === 0) {
+        this.emit('syncComplete', { type: 'printHistory', success: true, count: 0 })
+        this.emit('statusChange', { type: 'printHistory', status: 'success' })
+        return { success: true, count: 0 }
+      }
+
+      const results = { success: 0, failed: 0, errors: [] }
+      const batchSize = 50
+
+      for (let i = 0; i < recordsToSync.length; i += batchSize) {
+        const batch = recordsToSync.slice(i, i + batchSize)
+
+        const batchData = batch.map((r) => ({
+          queue_id: r.queue_id,
+          order_id: r.order_id,
+          order_no: r.order_no,
+          printer_id: r.printer_id,
+          printer_code: r.printer_code,
+          category_id: r.category_id,
+          items_count: r.items_count,
+          copies: r.copies,
+          print_status: r.print_status,
+          print_time: r.print_time,
+          error_message: r.error_message,
+          cashier_id: r.cashier_id,
+          cashier_name: r.cashier_name,
+          created_at: r.created_at,
+        }))
+
+        try {
+          const response = await api.batchSyncPrintHistory(batchData)
+          const result = response.data || {}
+
+          const failMap = new Map()
+          if (result.failRecords) {
+            result.failRecords.forEach((fail) => {
+              failMap.set(fail.queue_id, fail.error)
+            })
+          }
+
+          for (const record of batch) {
+            if (failMap.has(record.queue_id)) {
+              results.failed++
+              results.errors.push({ id: record.id, error: failMap.get(record.queue_id) })
+            } else {
+              await db.markPrintHistorySynced(record.id)
+              results.success++
+            }
+          }
+        } catch (error) {
+          for (const record of batch) {
+            results.failed++
+            results.errors.push({ id: record.id, error: error.message })
+          }
+        }
+      }
+
+      await db.setSetting('lastPrintHistorySyncTime', new Date().toISOString())
+      await db.addSyncRecord('printHistory', results.failed > 0 ? 'partial' : 'success', results)
+
+      this.emit('syncComplete', { type: 'printHistory', success: results.failed === 0, results })
+      this.emit('statusChange', {
+        type: 'printHistory',
+        status: results.failed === 0 ? 'success' : 'partial',
+        results,
+      })
+
+      return results
+    } catch (error) {
+      await db.addSyncRecord('printHistory', 'failed', { error: error.message })
+      this.emit('syncComplete', { type: 'printHistory', success: false, error: error.message })
+      this.emit('statusChange', { type: 'printHistory', status: 'failed', error: error.message })
+      throw error
     }
   }
 }

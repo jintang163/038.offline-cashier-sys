@@ -8,6 +8,7 @@ import Settings from './pages/Settings'
 import ProtectedRoute from './components/ProtectedRoute'
 import db from './utils/db'
 import syncService from './services/syncService'
+import kitchenPrintService from './services/kitchenPrintService'
 
 function App() {
   const [dbInit, setDbInit] = useState(false)
@@ -18,6 +19,7 @@ function App() {
       try {
         await db.init()
         setDbInit(true)
+        kitchenPrintService.init()
 
         if (navigator.onLine) {
           try {
