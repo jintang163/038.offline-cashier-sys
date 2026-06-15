@@ -326,8 +326,50 @@ class MemberService {
     return cards
   }
 
+  async payByCard(cardId, amount, orderNo) {
+    if (navigator.onLine) {
+      try {
+        const res = await api.memberCardPay({ cardId, amount, orderNo })
+        const result = res?.data || {}
+        const card = await db.getMemberCardByCardNo(
+          result.cardNo || (await db.member_cards.get(cardId))?.card_no
+        )
+        if (card && result.balance !== undefined) {
+          await db.member_cards.update(card.id, {
+            balance: result.balance,
+            reserved_balance: result.reserved || 0,
+            sync_status: 1,
+          })
+          if (card.member_id) {
+            const member = await this.getMemberById(card.member_id)
+            if (member) {
+              member.balance = result.balance
+              this._updateMemberCache(member)
+              this._setCurrentMember(member)
+            }
+          }
+        }
+        return { success: true, balance: result.balance, fromServer: true }
+      } catch (e) {
+        console.warn('Server card pay failed, falling back to local:', e)
+        if (e.message?.includes('OFFLINE') || e.code === 'ERR_NETWORK') {
+          return this._payByCardLocal(cardId, amount, orderNo)
+        }
+        throw e
+      }
+    } else {
+      return this._payByCardLocal(cardId, amount, orderNo)
+    }
+  }
+
+  async _payByCardLocal(cardId, amount, orderNo) {
+    await this.reserveCardBalance(cardId, amount, orderNo)
+    const result = await this.consumeCardBalance(cardId, amount, orderNo)
+    return { success: true, balance: result.balance, fromServer: false }
+  }
+
   async reserveCardBalance(cardId, amount, orderNo) {
-    await db.reserveCardBalance(cardId, amount)
+    await db.reserveCardBalance(cardId, amount, orderNo)
     return true
   }
 
@@ -339,7 +381,7 @@ class MemberService {
 
     if (!card) throw new Error('储值卡不存在')
 
-    const finalBalance = await db.consumeReservedBalance(cardId, amount)
+    const finalBalance = await db.consumeReservedBalance(cardId, amount, orderNo)
 
     if (card.member_id) {
       const member = await this.getMemberById(card.member_id)

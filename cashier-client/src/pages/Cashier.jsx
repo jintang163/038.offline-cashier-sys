@@ -372,20 +372,20 @@ function Cashier() {
       if (payType === 'member_card' && selectedCardId && payAmount > 0) {
         try {
           const card = memberCards.find((c) => c.id === selectedCardId)
-          if (isOnline) {
-            await memberService.reserveCardBalance(selectedCardId, payAmount, orderNo)
-            await memberService.consumeCardBalance(selectedCardId, payAmount, orderNo)
-          } else {
-            if (card && (card.credit_limit || 0) > 0) {
-              const available = (card.balance || 0) - (card.reserved_balance || 0)
-                + ((card.credit_limit || 0) - (card.used_credit || 0))
-              if (available < payAmount) {
-                throw new Error('储值卡可用额度（含预授权）不足')
-              }
+          if (!isOnline && card && (card.credit_limit || 0) > 0) {
+            const available = (card.balance || 0) - (card.reserved_balance || 0)
+              + ((card.credit_limit || 0) - (card.used_credit || 0))
+            if (available < payAmount) {
+              throw new Error('储值卡可用额度（含预授权）不足')
             }
-            await memberService.reserveCardBalance(selectedCardId, payAmount, orderNo)
-            await memberService.consumeCardBalance(selectedCardId, payAmount, orderNo)
+          }
+          const payResult = await memberService.payByCard(selectedCardId, payAmount, orderNo)
+          if (!payResult?.fromServer && !isOnline) {
             message.warning('离线扣款成功，联网后将同步至服务器')
+          }
+          if (payResult?.fromServer) {
+            const refreshed = await memberService.getMemberCards(currentMember?.id)
+            if (refreshed) setMemberCards(refreshed)
           }
         } catch (e) {
           console.error('Member card pay failed:', e)

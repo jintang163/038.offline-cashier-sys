@@ -123,6 +123,7 @@ public class MemberCardServiceImpl extends ServiceImpl<MemberCardMapper, MemberC
         Map<String, Object> result = new HashMap<>();
         result.put("balance", afterBalance);
         result.put("reserved", afterReservedStep2);
+        result.put("cardId", card.getId());
         result.put("message", "支付成功");
         return result;
     }

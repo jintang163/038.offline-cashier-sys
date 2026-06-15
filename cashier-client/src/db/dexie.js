@@ -2,7 +2,7 @@ import Dexie from 'dexie'
 
 const db = new Dexie('CashierCacheDB')
 
-db.version(5).stores({
+db.version(6).stores({
   products: '++id, erp_goods_id, product_name, category_id, category_name, barcode, price, original_price, unit, image, description, stock, status, sort, created_at, updated_at',
   categories: '++id, name, sort, status, created_at, updated_at',
   orders: '++id, order_no, erp_order_id, total_amount, discount_amount, pay_amount, pay_type, pay_status, order_status, sync_status, sync_attempts, sync_error, cashier_id, cashier_name, member_id, member_name, remark, created_at, synced_at',
@@ -17,6 +17,7 @@ db.version(5).stores({
   point_rules: '++id, rule_code, rule_name, rule_type, rule_value, min_amount, max_amount, start_date, end_date, status, sync_status',
   point_records: '++id, record_no, member_id, phone, change_type, change_points, before_points, after_points, order_no, source_type, remark, sync_status, sync_attempts, sync_error, cashier_id, created_at',
   member_cards: '++id, erp_card_id, card_no, member_id, card_type, balance, reserved_balance, credit_limit, used_credit, status, sync_status, last_sync_at',
+  member_card_records: '++id, record_no, card_id, card_no, member_id, trade_type, trade_amount, before_balance, after_balance, before_reserved, after_reserved, order_no, related_record_no, sync_status, sync_attempts, sync_error, cashier_id, created_at',
 })
 
 class DexieCache {
@@ -772,11 +773,163 @@ class DexieCache {
     const card = await db.member_cards.get(cardId)
     if (!card) throw new Error('储值卡不存在')
 
+    const beforeReserved = card.reserved_balance || 0
+    const afterReserved = Math.max(0, beforeReserved - amount)
+
     await db.member_cards.update(cardId, {
-      reserved_balance: Math.max(0, (card.reserved_balance || 0) - amount),
+      reserved_balance: afterReserved,
       sync_status: 0,
     })
+
+    await this._addCardRecord(card, {
+      trade_type: 6,
+      trade_amount: -amount,
+      before_balance: card.balance || 0,
+      after_balance: card.balance || 0,
+      before_reserved: beforeReserved,
+      after_reserved: afterReserved,
+      remark: '预授权取消',
+    })
+
     return true
+  }
+
+  _generateCardRecordNo() {
+    return 'CR' + Date.now() + Math.floor(Math.random() * 10000).toString().padStart(4, '0')
+  }
+
+  async _addCardRecord(card, recordData) {
+    const record = {
+      record_no: this._generateCardRecordNo(),
+      card_id: card.id,
+      card_no: card.card_no,
+      member_id: card.member_id,
+      trade_type: recordData.trade_type,
+      trade_amount: recordData.trade_amount,
+      before_balance: recordData.before_balance,
+      after_balance: recordData.after_balance,
+      before_reserved: recordData.before_reserved,
+      after_reserved: recordData.after_reserved,
+      order_no: recordData.order_no || null,
+      related_record_no: recordData.related_record_no || null,
+      sync_status: 0,
+      sync_attempts: 0,
+      sync_error: null,
+      cashier_id: recordData.cashier_id || null,
+      remark: recordData.remark || '',
+      created_at: new Date().toISOString(),
+    }
+    return await db.member_card_records.add(record)
+  }
+
+  async getUnsyncedMemberCardRecords(limit = 200) {
+    return await db.member_card_records
+      .where('sync_status')
+      .below(1)
+      .limit(limit)
+      .sortBy('created_at')
+  }
+
+  async updateMemberCardRecordSyncStatus(id, status, error = null) {
+    const updateData = { sync_status: status }
+    if (error) {
+      updateData.sync_error = error
+      const rec = await db.member_card_records.get(id)
+      updateData.sync_attempts = (rec?.sync_attempts || 0) + 1
+    }
+    return await db.member_card_records.update(id, updateData)
+  }
+
+  async addMemberCardRecord(record) {
+    const rec = {
+      ...record,
+      record_no: record.record_no || this._generateCardRecordNo(),
+      sync_status: record.sync_status ?? 0,
+      sync_attempts: record.sync_attempts || 0,
+      created_at: record.created_at || new Date().toISOString(),
+    }
+    return await db.member_card_records.add(rec)
+  }
+
+  async bulkUpsertMemberCardRecords(records) {
+    if (!records || records.length === 0) return
+    for (const rec of records) {
+      const existing = rec.record_no
+        ? await db.member_card_records.where('record_no').equals(rec.record_no).first()
+        : null
+      if (existing) {
+        await db.member_card_records.update(existing.id, rec)
+      } else {
+        await db.member_card_records.add({
+          ...rec,
+          sync_status: 1,
+        })
+      }
+    }
+  }
+
+  async reserveCardBalance(cardId, amount, orderNo = null) {
+    const card = await db.member_cards.get(cardId)
+    if (!card) throw new Error('储值卡不存在')
+
+    const available = (card.balance || 0) - (card.reserved_balance || 0)
+    if (available < amount) {
+      throw new Error('储值卡可用余额不足')
+    }
+
+    const beforeReserved = card.reserved_balance || 0
+    const afterReserved = beforeReserved + amount
+    const beforeBalance = card.balance || 0
+
+    await db.member_cards.update(cardId, {
+      reserved_balance: afterReserved,
+      sync_status: 0,
+    })
+
+    await this._addCardRecord(card, {
+      trade_type: 4,
+      trade_amount: amount,
+      before_balance: beforeBalance,
+      after_balance: beforeBalance,
+      before_reserved: beforeReserved,
+      after_reserved: afterReserved,
+      order_no: orderNo,
+      remark: '预授权冻结',
+    })
+
+    return true
+  }
+
+  async consumeReservedBalance(cardId, amount, orderNo = null) {
+    const card = await db.member_cards.get(cardId)
+    if (!card) throw new Error('储值卡不存在')
+    if ((card.reserved_balance || 0) < amount) {
+      throw new Error('预授权金额不足')
+    }
+
+    const beforeBalance = card.balance || 0
+    const afterBalance = beforeBalance - amount
+    const beforeReserved = card.reserved_balance || 0
+    const afterReserved = beforeReserved - amount
+
+    await db.member_cards.update(cardId, {
+      balance: afterBalance,
+      reserved_balance: afterReserved,
+      sync_status: 0,
+    })
+
+    await this._addCardRecord(card, {
+      trade_type: 5,
+      trade_amount: -amount,
+      before_balance: beforeBalance,
+      after_balance: afterBalance,
+      before_reserved: beforeReserved,
+      after_reserved: afterReserved,
+      order_no: orderNo,
+      remark: '预授权完成扣款',
+    })
+
+    return afterBalance
   }
 
   async getBirthdayMembers(days = 7) {
@@ -823,6 +976,7 @@ class DexieCache {
     await db.point_rules.clear()
     await db.point_records.clear()
     await db.member_cards.clear()
+    await db.member_card_records.clear()
     this.initialized = false
   }
 }

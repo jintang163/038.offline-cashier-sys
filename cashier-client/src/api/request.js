@@ -376,6 +376,14 @@ class ApiService {
     })
   }
 
+  async batchSyncMemberCardRecords(records) {
+    return this.request({
+      url: '/member/card-record/batch-sync',
+      method: 'post',
+      data: records,
+    })
+  }
+
   get baseURL() {
     return baseURL
   }

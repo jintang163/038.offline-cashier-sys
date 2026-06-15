@@ -6,6 +6,7 @@ import com.cashier.server.common.UserContext;
 import com.cashier.server.dto.member.*;
 import com.cashier.server.entity.member.Member;
 import com.cashier.server.entity.member.MemberCard;
+import com.cashier.server.entity.member.MemberCardRecord;
 import com.cashier.server.entity.member.MemberLevel;
 import com.cashier.server.entity.member.PointRule;
 import com.cashier.server.service.member.*;
@@ -37,6 +38,9 @@ public class MemberController {
 
     @Autowired
     private MemberCardService memberCardService;
+
+    @Autowired
+    private MemberCardRecordService memberCardRecordService;
 
     @GetMapping("/list")
     public Result<IPage<Member>> list(
@@ -157,5 +161,15 @@ public class MemberController {
     @PostMapping("/card/reserve")
     public Result<Map<String, Object>> cardReserve(@RequestBody CardReserveDTO dto) {
         return Result.success(memberCardService.reserve(dto));
+    }
+
+    @PostMapping("/card-record/batch-sync")
+    public Result<BatchSyncPointResultDTO> batchSyncCardRecords(@RequestBody List<MemberCardRecordSyncDTO> records) {
+        return Result.success(memberCardRecordService.batchSyncCardRecords(records));
+    }
+
+    @GetMapping("/card-record/unsynced")
+    public Result<List<MemberCardRecord>> getUnsyncedCardRecords(@RequestParam(defaultValue = "100") Integer limit) {
+        return Result.success(memberCardRecordService.getUnsyncedRecords(limit));
     }
 }

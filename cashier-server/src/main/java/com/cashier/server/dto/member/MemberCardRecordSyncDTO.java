@@ -4,32 +4,40 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Data
-public class PointRecordSyncDTO {
+public class MemberCardRecordSyncDTO {
 
     @JsonProperty("record_no")
     private String recordNo;
 
+    @JsonProperty("card_id")
+    private Long cardId;
+
+    @JsonProperty("card_no")
+    private String cardNo;
+
     @JsonProperty("member_id")
     private Long memberId;
 
-    @JsonProperty("phone")
-    private String phone;
+    @JsonProperty("trade_type")
+    private Integer tradeType;
 
-    @JsonProperty("change_type")
-    private Integer changeType;
+    @JsonProperty("trade_amount")
+    private BigDecimal tradeAmount;
 
-    @JsonProperty("change_points")
-    private Integer changePoints;
+    @JsonProperty("before_balance")
+    private BigDecimal beforeBalance;
 
-    @JsonProperty("before_points")
-    private Integer beforePoints;
+    @JsonProperty("after_balance")
+    private BigDecimal afterBalance;
 
-    @JsonProperty("after_points")
-    private Integer afterPoints;
+    @JsonProperty("before_reserved")
+    private BigDecimal beforeReserved;
+
+    @JsonProperty("after_reserved")
+    private BigDecimal afterReserved;
 
     @JsonProperty("order_no")
     private String orderNo;
@@ -37,14 +45,8 @@ public class PointRecordSyncDTO {
     @JsonProperty("order_id")
     private Long orderId;
 
-    @JsonProperty("source_type")
-    private Integer sourceType;
-
-    @JsonProperty("rule_id")
-    private Long ruleId;
-
-    @JsonProperty("related_amount")
-    private BigDecimal relatedAmount;
+    @JsonProperty("related_record_no")
+    private String relatedRecordNo;
 
     @JsonProperty("cashier_id")
     private Long cashierId;
@@ -66,9 +68,6 @@ public class PointRecordSyncDTO {
 
     @JsonProperty("sync_error")
     private String syncError;
-
-    @JsonProperty("expired_date")
-    private LocalDate expiredDate;
 
     @JsonProperty("created_at")
     private LocalDateTime createTime;

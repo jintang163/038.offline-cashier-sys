@@ -414,6 +414,99 @@ class SyncService {
     }
   }
 
+  async syncMemberCardRecords() {
+    if (!navigator.onLine) {
+      throw new Error('OFFLINE')
+    }
+
+    this.emit('syncStart', { type: 'memberCardRecords' })
+    this.emit('statusChange', { type: 'memberCardRecords', status: 'syncing' })
+
+    try {
+      const recordsToSync = await db.getUnsyncedMemberCardRecords(200)
+
+      if (recordsToSync.length === 0) {
+        this.emit('syncComplete', { type: 'memberCardRecords', success: true, count: 0 })
+        this.emit('statusChange', { type: 'memberCardRecords', status: 'success' })
+        return { success: true, count: 0 }
+      }
+
+      const results = { success: 0, failed: 0, errors: [] }
+      const batchSize = 50
+
+      for (let i = 0; i < recordsToSync.length; i += batchSize) {
+        const batch = recordsToSync.slice(i, i + batchSize)
+
+        const batchData = batch.map((r) => ({
+          record_no: r.record_no,
+          card_id: r.card_id,
+          card_no: r.card_no,
+          member_id: r.member_id,
+          trade_type: r.trade_type,
+          trade_amount: r.trade_amount,
+          before_balance: r.before_balance,
+          after_balance: r.after_balance,
+          before_reserved: r.before_reserved,
+          after_reserved: r.after_reserved,
+          order_no: r.order_no,
+          related_record_no: r.related_record_no,
+          cashier_id: r.cashier_id,
+          remark: r.remark,
+          created_at: r.created_at,
+          sync_attempts: r.sync_attempts || 0,
+          sync_error: r.sync_error,
+        }))
+
+        try {
+          const response = await api.batchSyncMemberCardRecords(batchData)
+          const result = response.data || {}
+
+          const failRecordMap = new Map()
+          if (result.failRecords) {
+            result.failRecords.forEach((fail) => {
+              failRecordMap.set(fail.record_no, fail.error)
+            })
+          }
+
+          for (const record of batch) {
+            if (failRecordMap.has(record.record_no)) {
+              results.failed++
+              const error = failRecordMap.get(record.record_no)
+              results.errors.push({ id: record.id, recordNo: record.record_no, error })
+              await db.updateMemberCardRecordSyncStatus(record.id, 2, error)
+            } else {
+              await db.updateMemberCardRecordSyncStatus(record.id, 1)
+              results.success++
+            }
+          }
+        } catch (error) {
+          for (const record of batch) {
+            results.failed++
+            results.errors.push({ id: record.id, recordNo: record.record_no, error: error.message })
+            await db.updateMemberCardRecordSyncStatus(record.id, 2, error.message)
+          }
+        }
+      }
+
+      await db.setSetting('lastMemberCardRecordSyncTime', new Date().toISOString())
+      await db.addSyncRecord('memberCardRecords', results.failed > 0 ? 'partial' : 'success', results)
+
+      this.emit('syncComplete', { type: 'memberCardRecords', success: results.failed === 0, results })
+      this.emit('statusChange', {
+        type: 'memberCardRecords',
+        status: results.failed === 0 ? 'success' : 'partial',
+        results,
+      })
+
+      return results
+    } catch (error) {
+      await db.addSyncRecord('memberCardRecords', 'failed', { error: error.message })
+      this.emit('syncComplete', { type: 'memberCardRecords', success: false, error: error.message })
+      this.emit('statusChange', { type: 'memberCardRecords', status: 'failed', error: error.message })
+      throw error
+    }
+  }
+
   async fullSync() {
     if (this.syncing) {
       return { success: false, message: '正在同步中，请稍后再试' }
@@ -455,6 +548,13 @@ class SyncService {
         failed: 0,
       }))
 
+      const cardRecordResult = await this.syncMemberCardRecords().catch((e) => ({
+        success: false,
+        error: e.message,
+        success: 0,
+        failed: 0,
+      }))
+
       return {
         success: true,
         products: productResult,
@@ -462,6 +562,7 @@ class SyncService {
         salesSummaries: salesSummaryResult,
         orders: orderResult,
         pointRecords: pointRecordResult,
+        memberCardRecords: cardRecordResult,
       }
     } finally {
       this.syncing = false
