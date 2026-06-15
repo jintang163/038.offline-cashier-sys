@@ -1,5 +1,9 @@
 package com.cashier.server.service.erp;
 
+import com.cashier.server.entity.member.Member;
+import com.cashier.server.entity.member.MemberCard;
+import com.cashier.server.entity.member.MemberCardRecord;
+import com.cashier.server.entity.member.PointRecord;
 import com.cashier.server.entity.order.Order;
 import com.cashier.server.entity.order.SalesSummary;
 import com.cashier.server.entity.product.Product;
@@ -39,4 +43,20 @@ public interface ErpSyncService {
     ProductCategory syncOrUpdateCategory(Map<String, Object> categoryData);
 
     boolean updateProductStock(String erpGoodsId, Integer stock);
+
+    void syncMembersFromErp();
+
+    List<Map<String, Object>> pullMembersFromErp();
+
+    boolean pushMemberPointsToErp(List<PointRecord> pointRecords);
+
+    boolean pushMemberCardRecordsToErp(List<MemberCardRecord> cardRecords);
+
+    boolean receiveMemberPush(List<Map<String, Object>> memberList);
+
+    boolean receiveMemberCardPush(List<Map<String, Object>> cardList);
+
+    Member syncOrUpdateMember(Map<String, Object> memberData);
+
+    MemberCard syncOrUpdateMemberCard(Map<String, Object> cardData);
 }

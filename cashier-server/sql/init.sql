@@ -237,3 +237,246 @@ INSERT INTO product (product_name, product_code, barcode, category_id, price, co
 ('农夫山泉 550ml', 'P003', '6901234567892', 5, 2.00, 0.80, 200, '瓶', 1),
 ('康师傅红烧牛肉面', 'P004', '6901234567893', 6, 5.00, 3.00, 50, '桶', 1),
 ('德芙巧克力', 'P005', '6901234567894', 7, 12.00, 8.00, 30, '盒', 1);
+
+-- =============================================
+-- 10. 会员等级表
+-- =============================================
+DROP TABLE IF EXISTS member_level;
+CREATE TABLE member_level (
+    id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    erp_level_id VARCHAR(64) DEFAULT NULL COMMENT 'ERP等级ID',
+    level_code VARCHAR(32) NOT NULL COMMENT '等级编码',
+    level_name VARCHAR(50) NOT NULL COMMENT '等级名称',
+    min_points INT DEFAULT 0 COMMENT '最低积分',
+    max_points INT DEFAULT NULL COMMENT '最高积分',
+    discount_rate DECIMAL(5,2) DEFAULT 100.00 COMMENT '折扣率(%) 100=无折扣',
+    point_rate DECIMAL(5,2) DEFAULT 1.00 COMMENT '积分倍率',
+    sort_order INT DEFAULT 0 COMMENT '排序',
+    status TINYINT DEFAULT 1 COMMENT '状态: 0-禁用, 1-正常',
+    create_time DATETIME DEFAULT NULL COMMENT '创建时间',
+    update_time DATETIME DEFAULT NULL COMMENT '更新时间',
+    deleted TINYINT DEFAULT 0 COMMENT '逻辑删除',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_level_code (level_code),
+    KEY idx_erp_level_id (erp_level_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='会员等级表';
+
+-- =============================================
+-- 11. 会员表
+-- =============================================
+DROP TABLE IF EXISTS member;
+CREATE TABLE member (
+    id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    erp_member_id VARCHAR(64) DEFAULT NULL COMMENT 'ERP会员ID',
+    phone VARCHAR(20) NOT NULL COMMENT '手机号',
+    card_no VARCHAR(32) DEFAULT NULL COMMENT '会员卡号',
+    member_name VARCHAR(50) DEFAULT NULL COMMENT '会员姓名',
+    nickname VARCHAR(50) DEFAULT NULL COMMENT '昵称',
+    avatar VARCHAR(255) DEFAULT NULL COMMENT '头像',
+    gender TINYINT DEFAULT 0 COMMENT '性别: 0-未知 1-男 2-女',
+    birthday DATE DEFAULT NULL COMMENT '生日',
+    email VARCHAR(100) DEFAULT NULL COMMENT '邮箱',
+    address VARCHAR(500) DEFAULT NULL COMMENT '地址',
+    level_id BIGINT DEFAULT NULL COMMENT '会员等级ID',
+    level_name VARCHAR(50) DEFAULT NULL COMMENT '等级名称(冗余)',
+    discount_rate DECIMAL(5,2) DEFAULT 100.00 COMMENT '折扣率(%)',
+    points INT DEFAULT 0 COMMENT '当前积分',
+    total_points INT DEFAULT 0 COMMENT '累计积分',
+    balance DECIMAL(12,2) DEFAULT 0.00 COMMENT '账户余额',
+    total_recharge DECIMAL(12,2) DEFAULT 0.00 COMMENT '累计充值',
+    total_consume DECIMAL(12,2) DEFAULT 0.00 COMMENT '累计消费',
+    total_orders INT DEFAULT 0 COMMENT '累计订单数',
+    register_time DATETIME DEFAULT NULL COMMENT '注册时间',
+    register_store BIGINT DEFAULT NULL COMMENT '注册门店',
+    source_type TINYINT DEFAULT 1 COMMENT '来源: 1-本系统 2-ERP同步 3-小程序 4-其他',
+    status TINYINT DEFAULT 1 COMMENT '状态: 0-禁用 1-正常 2-冻结',
+    remark VARCHAR(500) DEFAULT NULL COMMENT '备注',
+    last_used_time DATETIME DEFAULT NULL COMMENT '最后使用时间',
+    create_time DATETIME DEFAULT NULL COMMENT '创建时间',
+    update_time DATETIME DEFAULT NULL COMMENT '更新时间',
+    deleted TINYINT DEFAULT 0 COMMENT '逻辑删除',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_phone (phone),
+    UNIQUE KEY uk_card_no (card_no),
+    KEY idx_erp_member_id (erp_member_id),
+    KEY idx_level_id (level_id),
+    KEY idx_birthday (birthday),
+    KEY idx_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='会员表';
+
+-- =============================================
+-- 12. 会员储值卡表
+-- =============================================
+DROP TABLE IF EXISTS member_card;
+CREATE TABLE member_card (
+    id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    erp_card_id VARCHAR(64) DEFAULT NULL COMMENT 'ERP卡ID',
+    card_no VARCHAR(32) NOT NULL COMMENT '卡号',
+    member_id BIGINT DEFAULT NULL COMMENT '会员ID',
+    card_type TINYINT DEFAULT 1 COMMENT '卡类型: 1-储值卡 2-信用卡 3-礼品卡 4-会员卡',
+    card_name VARCHAR(50) DEFAULT NULL COMMENT '卡名称',
+    balance DECIMAL(12,2) DEFAULT 0.00 COMMENT '账户余额',
+    reserved_balance DECIMAL(12,2) DEFAULT 0.00 COMMENT '预授权冻结金额',
+    credit_limit DECIMAL(12,2) DEFAULT 0.00 COMMENT '离线预授权额度',
+    used_credit DECIMAL(12,2) DEFAULT 0.00 COMMENT '已使用预授权额度',
+    initial_balance DECIMAL(12,2) DEFAULT 0.00 COMMENT '初始金额',
+    total_recharge DECIMAL(12,2) DEFAULT 0.00 COMMENT '累计充值',
+    total_consume DECIMAL(12,2) DEFAULT 0.00 COMMENT '累计消费',
+    valid_start_date DATE DEFAULT NULL COMMENT '有效期开始',
+    valid_end_date DATE DEFAULT NULL COMMENT '有效期结束',
+    issue_time DATETIME DEFAULT NULL COMMENT '发卡时间',
+    issue_store BIGINT DEFAULT NULL COMMENT '发卡门店',
+    password VARCHAR(100) DEFAULT NULL COMMENT '支付密码(加密)',
+    status TINYINT DEFAULT 1 COMMENT '状态: 0-未激活 1-正常 2-冻结 3-注销 4-过期',
+    last_used_time DATETIME DEFAULT NULL COMMENT '最后使用时间',
+    last_sync_time DATETIME DEFAULT NULL COMMENT '最后同步时间',
+    create_time DATETIME DEFAULT NULL COMMENT '创建时间',
+    update_time DATETIME DEFAULT NULL COMMENT '更新时间',
+    deleted TINYINT DEFAULT 0 COMMENT '逻辑删除',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_card_no (card_no),
+    KEY idx_erp_card_id (erp_card_id),
+    KEY idx_member_id (member_id),
+    KEY idx_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='会员储值卡表';
+
+-- =============================================
+-- 13. 积分规则表
+-- =============================================
+DROP TABLE IF EXISTS point_rule;
+CREATE TABLE point_rule (
+    id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    rule_code VARCHAR(32) NOT NULL COMMENT '规则编码',
+    rule_name VARCHAR(100) NOT NULL COMMENT '规则名称',
+    rule_type TINYINT NOT NULL COMMENT '规则类型: 1-每N元1积分 2-每元N积分 3-固定积分 4-等级倍率积分',
+    rule_value DECIMAL(12,4) NOT NULL COMMENT '规则值',
+    min_amount DECIMAL(12,2) DEFAULT NULL COMMENT '最小消费金额',
+    max_amount DECIMAL(12,2) DEFAULT NULL COMMENT '最大消费金额',
+    applicable_levels VARCHAR(255) DEFAULT NULL COMMENT '适用等级ID列表(逗号分隔)',
+    exclude_products VARCHAR(500) DEFAULT NULL COMMENT '排除商品ID(逗号分隔)',
+    exclude_categories VARCHAR(255) DEFAULT NULL COMMENT '排除分类ID(逗号分隔)',
+    start_date DATETIME DEFAULT NULL COMMENT '生效开始时间',
+    end_date DATETIME DEFAULT NULL COMMENT '生效结束时间',
+    priority INT DEFAULT 0 COMMENT '优先级 数值越大越优先',
+    stackable TINYINT DEFAULT 1 COMMENT '是否可叠加: 0-否 1-是',
+    status TINYINT DEFAULT 1 COMMENT '状态: 0-禁用 1-启用',
+    remark VARCHAR(500) DEFAULT NULL COMMENT '备注',
+    create_time DATETIME DEFAULT NULL COMMENT '创建时间',
+    update_time DATETIME DEFAULT NULL COMMENT '更新时间',
+    deleted TINYINT DEFAULT 0 COMMENT '逻辑删除',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_rule_code (rule_code),
+    KEY idx_status (status),
+    KEY idx_priority (priority)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='积分规则表';
+
+-- =============================================
+-- 14. 积分变动记录表
+-- =============================================
+DROP TABLE IF EXISTS point_record;
+CREATE TABLE point_record (
+    id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    record_no VARCHAR(32) NOT NULL COMMENT '流水号',
+    member_id BIGINT NOT NULL COMMENT '会员ID',
+    phone VARCHAR(20) DEFAULT NULL COMMENT '手机号(冗余)',
+    change_type TINYINT NOT NULL COMMENT '变动类型: 1-获得 2-扣减 3-过期 4-调整 5-兑换 6-退款返还',
+    change_points INT NOT NULL COMMENT '变动积分(正数获得,负数扣减)',
+    before_points INT NOT NULL COMMENT '变动前积分',
+    after_points INT NOT NULL COMMENT '变动后积分',
+    order_no VARCHAR(32) DEFAULT NULL COMMENT '关联订单号',
+    order_id BIGINT DEFAULT NULL COMMENT '关联订单ID',
+    source_type TINYINT DEFAULT 1 COMMENT '来源: 1-消费赠送 2-积分抵扣 3-手动调整 4-活动赠送 5-过期清理 6-退款',
+    rule_id BIGINT DEFAULT NULL COMMENT '积分规则ID',
+    related_amount DECIMAL(12,2) DEFAULT NULL COMMENT '关联金额(消费金额等)',
+    cashier_id BIGINT DEFAULT NULL COMMENT '操作人ID',
+    cashier_name VARCHAR(50) DEFAULT NULL COMMENT '操作人姓名',
+    store_id BIGINT DEFAULT NULL COMMENT '门店ID',
+    remark VARCHAR(500) DEFAULT NULL COMMENT '备注',
+    sync_status TINYINT DEFAULT 0 COMMENT '同步ERP状态: 0-未同步 1-已同步 2-同步失败',
+    sync_attempts INT DEFAULT 0 COMMENT '同步重试次数',
+    sync_error VARCHAR(500) DEFAULT NULL COMMENT '同步错误信息',
+    sync_time DATETIME DEFAULT NULL COMMENT '同步时间',
+    expired_date DATE DEFAULT NULL COMMENT '过期日期(针对获得积分)',
+    create_time DATETIME DEFAULT NULL COMMENT '创建时间',
+    update_time DATETIME DEFAULT NULL COMMENT '更新时间',
+    deleted TINYINT DEFAULT 0 COMMENT '逻辑删除',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_record_no (record_no),
+    KEY idx_member_id (member_id),
+    KEY idx_order_no (order_no),
+    KEY idx_change_type (change_type),
+    KEY idx_create_time (create_time),
+    KEY idx_sync_status (sync_status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='积分变动记录表';
+
+-- =============================================
+-- 15. 储值卡交易记录表
+-- =============================================
+DROP TABLE IF EXISTS member_card_record;
+CREATE TABLE member_card_record (
+    id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    record_no VARCHAR(32) NOT NULL COMMENT '流水号',
+    card_id BIGINT NOT NULL COMMENT '储值卡ID',
+    card_no VARCHAR(32) DEFAULT NULL COMMENT '卡号(冗余)',
+    member_id BIGINT DEFAULT NULL COMMENT '会员ID(冗余)',
+    trade_type TINYINT NOT NULL COMMENT '交易类型: 1-充值 2-消费 3-退款 4-预授权 5-预授权完成 6-预授权取消 7-转账 8-调整',
+    trade_amount DECIMAL(12,2) NOT NULL COMMENT '交易金额(正数充值/收入,负数消费/支出)',
+    before_balance DECIMAL(12,2) NOT NULL COMMENT '交易前余额',
+    after_balance DECIMAL(12,2) NOT NULL COMMENT '交易后余额',
+    before_reserved DECIMAL(12,2) DEFAULT 0.00 COMMENT '交易前预授权',
+    after_reserved DECIMAL(12,2) DEFAULT 0.00 COMMENT '交易后预授权',
+    order_no VARCHAR(32) DEFAULT NULL COMMENT '关联订单号',
+    order_id BIGINT DEFAULT NULL COMMENT '关联订单ID',
+    related_record_no VARCHAR(32) DEFAULT NULL COMMENT '关联流水号(如预授权号)',
+    cashier_id BIGINT DEFAULT NULL COMMENT '操作人ID',
+    cashier_name VARCHAR(50) DEFAULT NULL COMMENT '操作人姓名',
+    store_id BIGINT DEFAULT NULL COMMENT '门店ID',
+    remark VARCHAR(500) DEFAULT NULL COMMENT '备注',
+    sync_status TINYINT DEFAULT 0 COMMENT '同步状态',
+    sync_attempts INT DEFAULT 0 COMMENT '同步重试次数',
+    sync_error VARCHAR(500) DEFAULT NULL COMMENT '同步错误',
+    create_time DATETIME DEFAULT NULL COMMENT '创建时间',
+    update_time DATETIME DEFAULT NULL COMMENT '更新时间',
+    deleted TINYINT DEFAULT 0 COMMENT '逻辑删除',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_record_no (record_no),
+    KEY idx_card_id (card_id),
+    KEY idx_member_id (member_id),
+    KEY idx_order_no (order_no),
+    KEY idx_trade_type (trade_type),
+    KEY idx_create_time (create_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='储值卡交易记录表';
+
+-- =============================================
+-- 初始化会员等级数据
+-- =============================================
+INSERT INTO member_level (level_code, level_name, min_points, max_points, discount_rate, point_rate, sort_order, status) VALUES
+('LV1', '普通会员', 0, 999, 100.00, 1.00, 1, 1),
+('LV2', '银卡会员', 1000, 4999, 95.00, 1.20, 2, 1),
+('LV3', '金卡会员', 5000, 19999, 90.00, 1.50, 3, 1),
+('LV4', '钻石会员', 20000, NULL, 85.00, 2.00, 4, 1);
+
+-- =============================================
+-- 初始化积分规则
+-- =============================================
+INSERT INTO point_rule (rule_code, rule_name, rule_type, rule_value, min_amount, priority, stackable, status, remark) VALUES
+('BASE_POINT', '基础积分(每1元1积分)', 2, 1.00, 0.01, 0, 1, 1, '消费每满1元赠送1积分'),
+('LV_RATE_POINT', '等级倍率积分', 4, 1.00, 0.01, 10, 1, 1, '按会员等级倍率计算积分'),
+('BIG_ORDER_BONUS', '大额消费额外积分', 3, 100, 500.00, 5, 1, 1, '单笔消费满500元额外赠送100积分');
+
+-- =============================================
+-- 初始化测试会员数据
+-- =============================================
+INSERT INTO member (erp_member_id, phone, card_no, member_name, gender, birthday, level_id, level_name, discount_rate, points, total_points, balance, total_consume, total_orders, register_time, source_type, status) VALUES
+('ERP001', '13800138001', 'VIP8880001', '张三', 1, '1990-06-15', 3, '金卡会员', 90.00, 8500, 12000, 500.00, 3500.00, 25, NOW(), 1, 1),
+('ERP002', '13800138002', 'VIP8880002', '李四', 2, '1995-12-20', 2, '银卡会员', 95.00, 3200, 4500, 200.00, 1800.00, 12, NOW(), 1, 1),
+('ERP003', '13800138003', 'VIP8880003', '王五', 1, '1988-03-08', 4, '钻石会员', 85.00, 25600, 30000, 2000.00, 15000.00, 68, NOW(), 1, 1),
+('ERP004', '13800138004', 'VIP8880004', '赵六', 0, NULL, 1, '普通会员', 100.00, 500, 500, 0.00, 300.00, 5, NOW(), 1, 1);
+
+-- =============================================
+-- 初始化测试储值卡数据
+-- =============================================
+INSERT INTO member_card (erp_card_id, card_no, member_id, card_type, card_name, balance, reserved_balance, credit_limit, initial_balance, total_recharge, total_consume, issue_time, status, last_sync_time) VALUES
+('EC001', 'CARD100001', 1, 1, '金卡储值卡', 500.00, 0.00, 500.00, 1000.00, 1000.00, 500.00, NOW(), 1, NOW()),
+('EC002', 'CARD100002', 2, 1, '银卡储值卡', 200.00, 0.00, 200.00, 500.00, 500.00, 300.00, NOW(), 1, NOW()),
+('EC003', 'CARD100003', 3, 1, '钻石储值卡', 2000.00, 0.00, 2000.00, 5000.00, 5000.00, 3000.00, NOW(), 1, NOW());

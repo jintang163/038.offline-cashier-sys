@@ -1,11 +1,16 @@
 package com.cashier.server.service.erp;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.cashier.server.common.BusinessException;
+import com.cashier.server.entity.member.Member;
+import com.cashier.server.entity.member.MemberCard;
+import com.cashier.server.entity.member.MemberCardRecord;
+import com.cashier.server.entity.member.PointRecord;
 import com.cashier.server.entity.order.Order;
 import com.cashier.server.entity.order.SalesSummary;
 import com.cashier.server.entity.product.Product;
 import com.cashier.server.entity.product.ProductCategory;
+import com.cashier.server.service.member.MemberCardService;
+import com.cashier.server.service.member.MemberService;
 import com.cashier.server.service.order.OrderService;
 import com.cashier.server.service.product.ProductCategoryService;
 import com.cashier.server.service.product.ProductService;
@@ -18,6 +23,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -41,6 +47,12 @@ public class ErpSyncServiceImpl implements ErpSyncService {
 
     @Autowired
     private WebSocketService webSocketService;
+
+    @Autowired
+    private MemberService memberService;
+
+    @Autowired
+    private MemberCardService memberCardService;
 
     @Override
     @Scheduled(cron = "0 0/30 * * * ?")
@@ -411,5 +423,230 @@ public class ErpSyncServiceImpl implements ErpSyncService {
 
         productService.updateStock(product.getId(), stock);
         return true;
+    }
+
+    @Override
+    @Scheduled(cron = "0 0/30 * * * ?")
+    public void syncMembersFromErp() {
+        log.info("开始定时同步会员数据...");
+        try {
+            List<Map<String, Object>> memberList = pullMembersFromErp();
+            if (memberList != null && !memberList.isEmpty()) {
+                for (Map<String, Object> memberData : memberList) {
+                    syncOrUpdateMember(memberData);
+                }
+                log.info("会员数据同步完成, 数量: {}", memberList.size());
+                webSocketService.broadcastMemberUpdate("会员数据已更新");
+            } else {
+                log.info("未获取到需要同步的会员数据");
+            }
+        } catch (Exception e) {
+            log.error("会员数据同步失败", e);
+            throw new BusinessException("会员数据同步失败: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public List<Map<String, Object>> pullMembersFromErp() {
+        log.info("从ERP拉取会员数据...");
+        try {
+            List<Map<String, Object>> members = erpApiClient.getMembers();
+            log.info("从ERP拉取会员数据成功, 数量: {}", members != null ? members.size() : 0);
+            return members;
+        } catch (Exception e) {
+            log.error("从ERP拉取会员数据失败", e);
+            throw new BusinessException("从ERP拉取会员数据失败: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public boolean pushMemberPointsToErp(List<PointRecord> pointRecords) {
+        if (pointRecords == null || pointRecords.isEmpty()) {
+            log.warn("积分变动记录为空，跳过推送");
+            return true;
+        }
+        log.info("推送积分变动到ERP, 数量: {}", pointRecords.size());
+        try {
+            Map<String, Object> response = erpApiClient.pushMemberPoints(pointRecords);
+            Integer code = response.get("code") != null ? Integer.valueOf(response.get("code").toString()) : null;
+            if (code != null && code == 200) {
+                log.info("推送积分变动到ERP成功, 数量: {}", pointRecords.size());
+                return true;
+            } else {
+                String message = response.get("message") != null ? response.get("message").toString() : "未知错误";
+                log.warn("推送积分变动到ERP返回失败, code={}, message={}", code, message);
+                return false;
+            }
+        } catch (Exception e) {
+            log.error("推送积分变动到ERP失败", e);
+            throw new BusinessException("推送积分变动到ERP失败: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public boolean pushMemberCardRecordsToErp(List<MemberCardRecord> cardRecords) {
+        if (cardRecords == null || cardRecords.isEmpty()) {
+            log.warn("会员卡交易记录为空，跳过推送");
+            return true;
+        }
+        log.info("推送会员卡交易记录到ERP, 数量: {}", cardRecords.size());
+        try {
+            Map<String, Object> response = erpApiClient.pushMemberCardRecords(cardRecords);
+            Integer code = response.get("code") != null ? Integer.valueOf(response.get("code").toString()) : null;
+            if (code != null && code == 200) {
+                log.info("推送会员卡交易记录到ERP成功, 数量: {}", cardRecords.size());
+                return true;
+            } else {
+                String message = response.get("message") != null ? response.get("message").toString() : "未知错误";
+                log.warn("推送会员卡交易记录到ERP返回失败, code={}, message={}", code, message);
+                return false;
+            }
+        } catch (Exception e) {
+            log.error("推送会员卡交易记录到ERP失败", e);
+            throw new BusinessException("推送会员卡交易记录到ERP失败: " + e.getMessage());
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean receiveMemberPush(List<Map<String, Object>> memberList) {
+        log.info("接收ERP会员推送, 数量: {}", memberList != null ? memberList.size() : 0);
+        try {
+            if (memberList != null && !memberList.isEmpty()) {
+                for (Map<String, Object> memberData : memberList) {
+                    syncOrUpdateMember(memberData);
+                }
+            }
+            webSocketService.broadcastMemberUpdate("会员数据已更新");
+            return true;
+        } catch (Exception e) {
+            log.error("会员推送处理失败", e);
+            return false;
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean receiveMemberCardPush(List<Map<String, Object>> cardList) {
+        log.info("接收ERP会员卡推送, 数量: {}", cardList != null ? cardList.size() : 0);
+        try {
+            if (cardList != null && !cardList.isEmpty()) {
+                for (Map<String, Object> cardData : cardList) {
+                    syncOrUpdateMemberCard(cardData);
+                }
+            }
+            webSocketService.broadcastMemberUpdate("会员卡数据已更新");
+            return true;
+        } catch (Exception e) {
+            log.error("会员卡推送处理失败", e);
+            return false;
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Member syncOrUpdateMember(Map<String, Object> memberData) {
+        String erpMemberId = memberData.get("erpMemberId") != null ? memberData.get("erpMemberId").toString() : null;
+        if (erpMemberId == null) {
+            return null;
+        }
+
+        Member existMember = memberService.lambdaQuery()
+                .eq(Member::getErpMemberId, erpMemberId)
+                .one();
+
+        Member member = existMember != null ? existMember : new Member();
+        member.setErpMemberId(erpMemberId);
+
+        if (memberData.get("phone") != null) {
+            member.setPhone(memberData.get("phone").toString());
+        }
+        if (memberData.get("cardNo") != null) {
+            member.setCardNo(memberData.get("cardNo").toString());
+        }
+        if (memberData.get("memberName") != null) {
+            member.setMemberName(memberData.get("memberName").toString());
+        }
+        if (memberData.get("levelId") != null) {
+            member.setLevelId(Long.valueOf(memberData.get("levelId").toString()));
+        }
+        if (memberData.get("levelName") != null) {
+            member.setLevelName(memberData.get("levelName").toString());
+        }
+        if (memberData.get("discountRate") != null) {
+            member.setDiscountRate(new BigDecimal(memberData.get("discountRate").toString()));
+        }
+        if (memberData.get("points") != null) {
+            member.setPoints(Integer.valueOf(memberData.get("points").toString()));
+        }
+        if (memberData.get("totalPoints") != null) {
+            member.setTotalPoints(Integer.valueOf(memberData.get("totalPoints").toString()));
+        }
+        if (memberData.get("balance") != null) {
+            member.setBalance(new BigDecimal(memberData.get("balance").toString()));
+        }
+        if (memberData.get("status") != null) {
+            member.setStatus(Integer.valueOf(memberData.get("status").toString()));
+        }
+        if (memberData.get("lastUsedTime") != null) {
+            member.setLastUsedTime(LocalDateTime.parse(memberData.get("lastUsedTime").toString()));
+        }
+
+        if (existMember == null) {
+            memberService.save(member);
+        } else {
+            memberService.updateById(member);
+        }
+
+        return member;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public MemberCard syncOrUpdateMemberCard(Map<String, Object> cardData) {
+        String erpCardId = cardData.get("erpCardId") != null ? cardData.get("erpCardId").toString() : null;
+        if (erpCardId == null) {
+            return null;
+        }
+
+        MemberCard existCard = memberCardService.lambdaQuery()
+                .eq(MemberCard::getErpCardId, erpCardId)
+                .one();
+
+        MemberCard card = existCard != null ? existCard : new MemberCard();
+        card.setErpCardId(erpCardId);
+
+        if (cardData.get("cardNo") != null) {
+            card.setCardNo(cardData.get("cardNo").toString());
+        }
+        if (cardData.get("memberId") != null) {
+            card.setMemberId(Long.valueOf(cardData.get("memberId").toString()));
+        }
+        if (cardData.get("cardType") != null) {
+            card.setCardType(Integer.valueOf(cardData.get("cardType").toString()));
+        }
+        if (cardData.get("cardName") != null) {
+            card.setCardName(cardData.get("cardName").toString());
+        }
+        if (cardData.get("balance") != null) {
+            card.setBalance(new BigDecimal(cardData.get("balance").toString()));
+        }
+        if (cardData.get("reservedBalance") != null) {
+            card.setReservedBalance(new BigDecimal(cardData.get("reservedBalance").toString()));
+        }
+        if (cardData.get("creditLimit") != null) {
+            card.setCreditLimit(new BigDecimal(cardData.get("creditLimit").toString()));
+        }
+        if (cardData.get("status") != null) {
+            card.setStatus(Integer.valueOf(cardData.get("status").toString()));
+        }
+
+        if (existCard == null) {
+            memberCardService.save(card);
+        } else {
+            memberCardService.updateById(card);
+        }
+
+        return card;
     }
 }

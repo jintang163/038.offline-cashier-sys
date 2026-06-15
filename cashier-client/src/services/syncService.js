@@ -263,6 +263,157 @@ class SyncService {
     }
   }
 
+  async syncMembers() {
+    if (!navigator.onLine) {
+      throw new Error('OFFLINE')
+    }
+
+    this.emit('syncStart', { type: 'members' })
+    this.emit('statusChange', { type: 'members', status: 'syncing' })
+
+    try {
+      const lastSyncTime = await db.getSetting('lastMemberSyncTime')
+      const params = lastSyncTime ? { updateTime: lastSyncTime } : {}
+
+      const memberResponse = await api.getMemberSyncList({ ...params, status: 1 })
+      const members = memberResponse.data?.items || memberResponse.data || []
+
+      if (members.length > 0) {
+        await db.bulkUpsertMembers(members)
+      }
+
+      const levelResponse = await api.getMemberLevels()
+      const levels = levelResponse.data || []
+      if (levels.length > 0) {
+        await db.bulkUpsertMemberLevels(levels)
+      }
+
+      const ruleResponse = await api.getPointRules()
+      const rules = ruleResponse.data || []
+      if (rules.length > 0) {
+        await db.bulkUpsertPointRules(rules)
+      }
+
+      const allMemberIds = members.map((m) => m.id).filter(Boolean)
+      for (let i = 0; i < allMemberIds.length; i += 50) {
+        const batchIds = allMemberIds.slice(i, i + 50)
+        for (const mid of batchIds) {
+          try {
+            const cardRes = await api.getMemberCards(mid)
+            if (cardRes?.data?.length) {
+              await db.bulkUpsertMemberCards(cardRes.data)
+            }
+          } catch (e) {
+            console.warn(`Failed to sync cards for member ${mid}:`, e)
+          }
+        }
+      }
+
+      await db.setSetting('lastMemberSyncTime', new Date().toISOString())
+      await db.addSyncRecord('members', 'success', { count: members.length })
+
+      this.emit('syncComplete', { type: 'members', success: true, count: members.length })
+      this.emit('statusChange', { type: 'members', status: 'success' })
+
+      return { success: true, count: members.length, levels: levels.length, rules: rules.length }
+    } catch (error) {
+      await db.addSyncRecord('members', 'failed', { error: error.message })
+      this.emit('syncComplete', { type: 'members', success: false, error: error.message })
+      this.emit('statusChange', { type: 'members', status: 'failed', error: error.message })
+      throw error
+    }
+  }
+
+  async syncPointRecords() {
+    if (!navigator.onLine) {
+      throw new Error('OFFLINE')
+    }
+
+    this.emit('syncStart', { type: 'pointRecords' })
+    this.emit('statusChange', { type: 'pointRecords', status: 'syncing' })
+
+    try {
+      const recordsToSync = await db.getUnsyncedPointRecords(200)
+
+      if (recordsToSync.length === 0) {
+        this.emit('syncComplete', { type: 'pointRecords', success: true, count: 0 })
+        this.emit('statusChange', { type: 'pointRecords', status: 'success' })
+        return { success: true, count: 0 }
+      }
+
+      const results = { success: 0, failed: 0, errors: [] }
+      const batchSize = 50
+
+      for (let i = 0; i < recordsToSync.length; i += batchSize) {
+        const batch = recordsToSync.slice(i, i + batchSize)
+
+        const batchData = batch.map((r) => ({
+          record_no: r.record_no,
+          member_id: r.member_id,
+          phone: r.phone,
+          change_type: r.change_type,
+          change_points: r.change_points,
+          before_points: r.before_points,
+          after_points: r.after_points,
+          order_no: r.order_no,
+          source_type: r.source_type,
+          remark: r.remark,
+          cashier_id: r.cashier_id,
+          created_at: r.created_at,
+          sync_attempts: r.sync_attempts || 0,
+          sync_error: r.sync_error,
+        }))
+
+        try {
+          const response = await api.batchSyncPointRecords(batchData)
+          const result = response.data || {}
+
+          const failRecordMap = new Map()
+          if (result.failRecords) {
+            result.failRecords.forEach((fail) => {
+              failRecordMap.set(fail.record_no, fail.error)
+            })
+          }
+
+          for (const record of batch) {
+            if (failRecordMap.has(record.record_no)) {
+              results.failed++
+              const error = failRecordMap.get(record.record_no)
+              results.errors.push({ id: record.id, recordNo: record.record_no, error })
+              await db.updatePointRecordSyncStatus(record.id, 2, error)
+            } else {
+              await db.updatePointRecordSyncStatus(record.id, 1)
+              results.success++
+            }
+          }
+        } catch (error) {
+          for (const record of batch) {
+            results.failed++
+            results.errors.push({ id: record.id, recordNo: record.record_no, error: error.message })
+            await db.updatePointRecordSyncStatus(record.id, 2, error.message)
+          }
+        }
+      }
+
+      await db.setSetting('lastPointRecordSyncTime', new Date().toISOString())
+      await db.addSyncRecord('pointRecords', results.failed > 0 ? 'partial' : 'success', results)
+
+      this.emit('syncComplete', { type: 'pointRecords', success: results.failed === 0, results })
+      this.emit('statusChange', {
+        type: 'pointRecords',
+        status: results.failed === 0 ? 'success' : 'partial',
+        results,
+      })
+
+      return results
+    } catch (error) {
+      await db.addSyncRecord('pointRecords', 'failed', { error: error.message })
+      this.emit('syncComplete', { type: 'pointRecords', success: false, error: error.message })
+      this.emit('statusChange', { type: 'pointRecords', status: 'failed', error: error.message })
+      throw error
+    }
+  }
+
   async fullSync() {
     if (this.syncing) {
       return { success: false, message: '正在同步中，请稍后再试' }
@@ -275,6 +426,12 @@ class SyncService {
       const productResult = await this.syncProducts().catch((e) => ({
         success: false,
         error: e.message,
+      }))
+
+      const memberResult = await this.syncMembers().catch((e) => ({
+        success: false,
+        error: e.message,
+        count: 0,
       }))
       
       const salesSummaryResult = await this.syncSalesSummaries().catch((e) => ({
@@ -291,11 +448,20 @@ class SyncService {
         failed: 0,
       }))
 
+      const pointRecordResult = await this.syncPointRecords().catch((e) => ({
+        success: false,
+        error: e.message,
+        success: 0,
+        failed: 0,
+      }))
+
       return {
         success: true,
         products: productResult,
+        members: memberResult,
         salesSummaries: salesSummaryResult,
         orders: orderResult,
+        pointRecords: pointRecordResult,
       }
     } finally {
       this.syncing = false

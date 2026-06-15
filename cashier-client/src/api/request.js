@@ -224,6 +224,158 @@ class ApiService {
     })
   }
 
+  async getMemberByPhone(phone) {
+    return this.request(
+      {
+        url: '/member/phone/' + phone,
+        method: 'get',
+      },
+      { offlineQueue: false }
+    )
+  }
+
+  async getMemberByCardNo(cardNo) {
+    return this.request(
+      {
+        url: '/member/card/' + cardNo,
+        method: 'get',
+      },
+      { offlineQueue: false }
+    )
+  }
+
+  async getMemberDetail(id) {
+    return this.request(
+      {
+        url: '/member/' + id,
+        method: 'get',
+      },
+      { offlineQueue: false }
+    )
+  }
+
+  async getMemberList(params) {
+    return this.request(
+      {
+        url: '/member/list',
+        method: 'get',
+        params,
+      },
+      { offlineQueue: false }
+    )
+  }
+
+  async getMemberSyncList(params) {
+    return this.request(
+      {
+        url: '/member/sync-list',
+        method: 'get',
+        params,
+      },
+      { offlineQueue: false }
+    )
+  }
+
+  async saveMember(member) {
+    return this.request({
+      url: '/member',
+      method: member.id ? 'put' : 'post',
+      data: member,
+    })
+  }
+
+  async getMemberCards(memberId) {
+    return this.request(
+      {
+        url: '/member/' + memberId + '/cards',
+        method: 'get',
+      },
+      { offlineQueue: false }
+    )
+  }
+
+  async getMemberLevels() {
+    return this.request(
+      {
+        url: '/member/level/list',
+        method: 'get',
+      },
+      { offlineQueue: false }
+    )
+  }
+
+  async getPointRules() {
+    return this.request(
+      {
+        url: '/member/point-rule/list',
+        method: 'get',
+      },
+      { offlineQueue: false }
+    )
+  }
+
+  async batchSyncPointRecords(records) {
+    return this.request({
+      url: '/member/point-record/batch-sync',
+      method: 'post',
+      data: records,
+    })
+  }
+
+  async calculatePoints(params) {
+    return this.request(
+      {
+        url: '/member/point-rule/calculate',
+        method: 'post',
+        data: params,
+      },
+      { offlineQueue: false }
+    )
+  }
+
+  async addPoints(params) {
+    return this.request({
+      url: '/member/point/add',
+      method: 'post',
+      data: params,
+    })
+  }
+
+  async deductPoints(params) {
+    return this.request({
+      url: '/member/point/deduct',
+      method: 'post',
+      data: params,
+    })
+  }
+
+  async getBirthdayMembers(days) {
+    return this.request(
+      {
+        url: '/member/birthday',
+        method: 'get',
+        params: { days },
+      },
+      { offlineQueue: false }
+    )
+  }
+
+  async memberCardPay(params) {
+    return this.request({
+      url: '/member/card/pay',
+      method: 'post',
+      data: params,
+    })
+  }
+
+  async memberCardReserve(params) {
+    return this.request({
+      url: '/member/card/reserve',
+      method: 'post',
+      data: params,
+    })
+  }
+
   get baseURL() {
     return baseURL
   }

@@ -37,6 +37,15 @@ public class WebSocketService {
         log.info("广播订单同步更新通知");
     }
 
+    public void broadcastMemberUpdate(Object data) {
+        JSONObject json = new JSONObject();
+        json.put("type", "member_update");
+        json.put("data", data);
+        json.put("timestamp", System.currentTimeMillis());
+        WebSocketServer.broadcast(json.toJSONString());
+        log.info("广播会员更新通知");
+    }
+
     public void broadcastNetworkStatus(boolean online) {
         JSONObject json = new JSONObject();
         json.put("type", "network_status");

@@ -109,6 +109,36 @@ public class ErpApiClient {
         return response;
     }
 
+    public List<Map<String, Object>> getMembers() {
+        log.info("开始调用ERP接口获取会员列表");
+        Map<String, Object> response = executeWithRetry("/member/list", new HashMap<>(), HttpMethod.POST);
+        Object data = response.get("data");
+        if (data == null) {
+            return null;
+        }
+        return JSON.parseArray(JSON.toJSONString(data), Map.class);
+    }
+
+    public Map<String, Object> pushMemberPoints(List<PointRecord> pointRecords) {
+        log.info("开始调用ERP接口推送积分变动, 数量={}", pointRecords.size());
+        Map<String, Object> requestData = new HashMap<>();
+        requestData.put("pointRecords", pointRecords);
+
+        Map<String, Object> response = executeWithRetry("/member/points/push", requestData, HttpMethod.POST);
+        log.info("ERP积分变动推送成功, 数量={}", pointRecords.size());
+        return response;
+    }
+
+    public Map<String, Object> pushMemberCardRecords(List<MemberCardRecord> cardRecords) {
+        log.info("开始调用ERP接口推送会员卡交易, 数量={}", cardRecords.size());
+        Map<String, Object> requestData = new HashMap<>();
+        requestData.put("cardRecords", cardRecords);
+
+        Map<String, Object> response = executeWithRetry("/member/card/records/push", requestData, HttpMethod.POST);
+        log.info("ERP会员卡交易推送成功, 数量={}", cardRecords.size());
+        return response;
+    }
+
     private Map<String, Object> executeWithRetry(String path, Map<String, Object> data, HttpMethod method) {
         int retryTimes = erpApiProperties.getRetryTimes();
         int retryInterval = erpApiProperties.getRetryInterval();
