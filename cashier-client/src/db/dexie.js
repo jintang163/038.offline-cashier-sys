@@ -2,7 +2,7 @@ import Dexie from 'dexie'
 
 const db = new Dexie('CashierCacheDB')
 
-db.version(6).stores({
+db.version(7).stores({
   products: '++id, erp_goods_id, product_name, category_id, category_name, barcode, price, original_price, unit, image, description, stock, status, sort, created_at, updated_at',
   categories: '++id, name, sort, status, created_at, updated_at',
   orders: '++id, order_no, erp_order_id, total_amount, discount_amount, pay_amount, pay_type, pay_status, order_status, sync_status, sync_attempts, sync_error, cashier_id, cashier_name, member_id, member_name, remark, created_at, synced_at',
@@ -18,6 +18,8 @@ db.version(6).stores({
   point_records: '++id, record_no, member_id, phone, change_type, change_points, before_points, after_points, order_no, source_type, remark, sync_status, sync_attempts, sync_error, cashier_id, created_at',
   member_cards: '++id, erp_card_id, card_no, member_id, card_type, balance, reserved_balance, credit_limit, used_credit, status, sync_status, last_sync_at',
   member_card_records: '++id, record_no, card_id, card_no, member_id, trade_type, trade_amount, before_balance, after_balance, before_reserved, after_reserved, order_no, related_record_no, sync_status, sync_attempts, sync_error, cashier_id, created_at',
+  recommend_cache: '++id, [type+period], type, period, data, generated_at, expires_at',
+  stock_forecast: '++id, product_id, product_name, forecast_days, forecast_qty, current_stock, suggested_purchase, confidence, generated_at',
 })
 
 class DexieCache {
@@ -961,6 +963,174 @@ class DexieCache {
     })
   }
 
+  async getProductSalesRanking(days = 7, limit = 50) {
+    const startDate = new Date()
+    startDate.setDate(startDate.getDate() - days)
+    const startStr = startDate.toISOString()
+
+    const orderItems = await db.order_items
+      .where('created_at')
+      .aboveOrEqual(startStr)
+      .toArray()
+
+    const productMap = new Map()
+    for (const item of orderItems) {
+      if (!productMap.has(item.product_id)) {
+        productMap.set(item.product_id, {
+          product_id: item.product_id,
+          product_name: item.product_name,
+          erp_goods_id: item.erp_goods_id,
+          total_quantity: 0,
+          total_amount: 0,
+          order_count: 0,
+          price: item.price,
+          image: item.image,
+          category_id: item.category_id,
+          _orderSet: new Set(),
+        })
+      }
+      const stats = productMap.get(item.product_id)
+      stats.total_quantity += item.quantity || 0
+      stats.total_amount += item.pay_amount || item.subtotal || 0
+      if (!stats._orderSet.has(item.order_id)) {
+        stats.order_count++
+        stats._orderSet.add(item.order_id)
+      }
+    }
+
+    const result = Array.from(productMap.values())
+      .map((s) => ({
+        ...s,
+        _orderSet: undefined,
+      }))
+      .sort((a, b) => b.total_quantity - a.total_quantity)
+      .slice(0, limit)
+
+    return result
+  }
+
+  async getOrderItemGroups(days = 14, minSupport = 3) {
+    const startDate = new Date()
+    startDate.setDate(startDate.getDate() - days)
+    const startStr = startDate.toISOString()
+
+    const allItems = await db.order_items
+      .where('created_at')
+      .aboveOrEqual(startStr)
+      .toArray()
+
+    const orderGroups = new Map()
+    for (const item of allItems) {
+      if (!orderGroups.has(item.order_id)) {
+        orderGroups.set(item.order_id, [])
+      }
+      orderGroups.get(item.order_id).push({
+        product_id: item.product_id,
+        product_name: item.product_name,
+        price: item.price,
+        quantity: item.quantity,
+      })
+    }
+
+    return Array.from(orderGroups.values())
+  }
+
+  async getLowStockProducts(threshold = 10) {
+    const products = await db.products
+      .where('status')
+      .equals(1)
+      .toArray()
+    return products
+      .filter((p) => (p.stock || 0) <= threshold)
+      .sort((a, b) => (a.stock || 0) - (b.stock || 0))
+  }
+
+  async getRecommendCache(type, period = '7d') {
+    const record = await db.recommend_cache
+      .where('[type+period]')
+      .equals([type, period])
+      .first()
+    if (!record) return null
+    if (record.expires_at && new Date(record.expires_at) < new Date()) {
+      return null
+    }
+    try {
+      return typeof record.data === 'string' ? JSON.parse(record.data) : record.data
+    } catch (e) {
+      return null
+    }
+  }
+
+  async setRecommendCache(type, period = '7d', data, ttlHours = 1) {
+    const existing = await db.recommend_cache
+      .where('[type+period]')
+      .equals([type, period])
+      .first()
+
+    const expiresAt = new Date()
+    expiresAt.setHours(expiresAt.getHours() + ttlHours)
+
+    if (existing) {
+      await db.recommend_cache.update(existing.id, {
+        data: JSON.stringify(data),
+        generated_at: new Date().toISOString(),
+        expires_at: expiresAt.toISOString(),
+      })
+    } else {
+      await db.recommend_cache.add({
+        type,
+        period,
+        data: JSON.stringify(data),
+        generated_at: new Date().toISOString(),
+        expires_at: expiresAt.toISOString(),
+      })
+    }
+  }
+
+  async saveStockForecast(forecastList) {
+    if (!forecastList || forecastList.length === 0) return
+    const now = new Date().toISOString()
+    for (const item of forecastList) {
+      const existing = await db.stock_forecast
+        .where('product_id')
+        .equals(item.product_id)
+        .first()
+      if (existing) {
+        await db.stock_forecast.update(existing.id, {
+          ...item,
+          generated_at: now,
+        })
+      } else {
+        await db.stock_forecast.add({
+          ...item,
+          generated_at: now,
+        })
+      }
+    }
+  }
+
+  async getStockForecast() {
+    const forecasts = await db.stock_forecast
+      .orderBy('suggested_purchase')
+      .reverse()
+      .toArray()
+
+    const products = await db.products.toArray()
+    const productMap = new Map(products.map((p) => [p.id, p]))
+
+    return forecasts.map((f) => ({
+      ...f,
+      product: productMap.get(f.product_id) || null,
+      stock: f.current_stock,
+      shortage: Math.max(0, (f.forecast_qty || 0) - (f.current_stock || 0)),
+    }))
+  }
+
+  async clearRecommendCache() {
+    await db.recommend_cache.clear()
+    await db.stock_forecast.clear()
+  }
+
   async clearAll() {
     await db.products.clear()
     await db.categories.clear()
@@ -977,6 +1147,8 @@ class DexieCache {
     await db.point_records.clear()
     await db.member_cards.clear()
     await db.member_card_records.clear()
+    await db.recommend_cache.clear()
+    await db.stock_forecast.clear()
     this.initialized = false
   }
 }

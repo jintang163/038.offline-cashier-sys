@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
-import { Input, Button, Modal, Radio, message, Empty, InputNumber, Alert, Tag, Card, Select, Tooltip, Badge } from 'antd'
-import { SearchOutlined, DeleteOutlined, PlusOutlined, MinusOutlined, WifiOutlined, UserOutlined, GiftOutlined, CrownOutlined, IdcardOutlined, CloseOutlined, CreditCardOutlined } from '@ant-design/icons'
+import { Input, Button, Modal, Radio, message, Empty, InputNumber, Alert, Tag, Card, Select, Tooltip, Badge, Table, Statistic, Row, Col } from 'antd'
+import { SearchOutlined, DeleteOutlined, PlusOutlined, MinusOutlined, WifiOutlined, UserOutlined, GiftOutlined, CrownOutlined, IdcardOutlined, CloseOutlined, CreditCardOutlined, FireOutlined, BulbOutlined, AlertOutlined, ShoppingOutlined } from '@ant-design/icons'
 import AppLayout from '../components/AppLayout'
 import db from '../utils/db'
 import { initMockData } from '../db/mockData'
 import useNetworkStatus from '../hooks/useNetwork'
 import syncService from '../services/syncService'
 import memberService from '../services/memberService'
+import recommendService from '../services/intelligentRecommendService'
 import dayjs from 'dayjs'
 
 const { Option } = Select
@@ -33,6 +34,15 @@ function Cashier() {
   const [birthdayTipVisible, setBirthdayTipVisible] = useState(false)
   const [birthdayMember, setBirthdayMember] = useState(null)
 
+  const [showRecommend, setShowRecommend] = useState(false)
+  const [hotProducts, setHotProducts] = useState([])
+  const [cartRecommendations, setCartRecommendations] = useState([])
+  const [recommendLoading, setRecommendLoading] = useState(false)
+  const [stockForecastVisible, setStockForecastVisible] = useState(false)
+  const [stockAlerts, setStockAlerts] = useState([])
+  const [lowStockCount, setLowStockCount] = useState(0)
+  const [timeRecLabel, setTimeRecLabel] = useState('热门推荐')
+
   useEffect(() => {
     initData()
     checkBirthdayMembers()
@@ -45,11 +55,50 @@ function Cashier() {
       await initMockData()
       loadCategories()
       loadProducts()
+      loadRecommendData()
+      loadStockAlerts()
     } catch (error) {
       console.error('Failed to init data:', error)
       message.error('数据初始化失败')
     }
   }
+
+  const loadRecommendData = async () => {
+    try {
+      setRecommendLoading(true)
+      const timeRec = await recommendService.getTimeBasedRecommendation()
+      setTimeRecLabel(timeRec.label)
+      const hot = await recommendService.getHotProducts(7, 30)
+      setHotProducts(hot)
+    } catch (e) {
+      console.warn('Load recommend data failed:', e)
+    } finally {
+      setRecommendLoading(false)
+    }
+  }
+
+  const loadStockAlerts = async () => {
+    try {
+      const alerts = await recommendService.getLowStockAlert(10)
+      setStockAlerts(alerts)
+      setLowStockCount(alerts.filter(a => a.urgency === 'critical' || a.urgency === 'high').length)
+    } catch (e) {
+      console.warn('Load stock alerts failed:', e)
+    }
+  }
+
+  const loadCartRecommendations = useCallback(async (currentCart) => {
+    if (!currentCart || currentCart.length === 0) {
+      setCartRecommendations([])
+      return
+    }
+    try {
+      const recs = await recommendService.getRecommendedForCart(currentCart, 14, 6)
+      setCartRecommendations(recs)
+    } catch (e) {
+      console.warn('Load cart recommendations failed:', e)
+    }
+  }, [])
 
   const onMemberChange = (member) => {
     setCurrentMember(member)
@@ -100,6 +149,31 @@ function Cashier() {
     }, 300)
     return () => clearTimeout(timer)
   }, [searchText, activeCategory])
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      loadCartRecommendations(cart)
+    }, 500)
+    return () => clearTimeout(timer)
+  }, [cart, loadCartRecommendations])
+
+  const handleRecommendClick = () => {
+    setShowRecommend(true)
+    setActiveCategory(null)
+    setSearchText('')
+  }
+
+  const addRecommendationToCart = (rec) => {
+    const product = {
+      id: rec.product_id || rec.id,
+      product_id: rec.product_id || rec.id,
+      product_name: rec.product_name,
+      price: rec.price,
+      image: rec.image,
+      stock: rec.stock ?? 999,
+    }
+    addToCart(product)
+  }
 
   const handleMemberSearch = async () => {
     const keyword = memberInput.trim()
@@ -152,6 +226,7 @@ function Cashier() {
   }
 
   const handleCategoryClick = (categoryId) => {
+    setShowRecommend(false)
     setActiveCategory(activeCategory === categoryId ? null : categoryId)
   }
 
@@ -588,10 +663,32 @@ function Cashier() {
               size="large"
               autoFocus
             />
+            <Tooltip title="库存预警">
+              <Badge count={lowStockCount} size="small" offset={[-4, 4]}>
+                <Button
+                  type="text"
+                  icon={<AlertOutlined />}
+                  size="large"
+                  onClick={() => setStockForecastVisible(true)}
+                  style={{ marginLeft: 8 }}
+                />
+              </Badge>
+            </Tooltip>
           </div>
           <div className="category-list">
             <div
-              className={`category-item ${!activeCategory ? 'active' : ''}`}
+              className={`category-item ${showRecommend ? 'active' : ''}`}
+              onClick={handleRecommendClick}
+              style={{
+                background: showRecommend ? 'linear-gradient(135deg, #ff7a45 0%, #ff4d4f 100%)' : undefined,
+                color: showRecommend ? '#fff' : undefined,
+              }}
+            >
+              <FireOutlined style={{ marginRight: 4 }} />
+              智能推荐
+            </div>
+            <div
+              className={`category-item ${!activeCategory && !showRecommend ? 'active' : ''}`}
               onClick={() => handleCategoryClick(null)}
             >
               全部
@@ -599,7 +696,7 @@ function Cashier() {
             {categories.map((cat) => (
               <div
                 key={cat.id}
-                className={`category-item ${activeCategory === cat.id ? 'active' : ''}`}
+                className={`category-item ${activeCategory === cat.id && !showRecommend ? 'active' : ''}`}
                 onClick={() => handleCategoryClick(cat.id)}
               >
                 {cat.name}
@@ -607,7 +704,104 @@ function Cashier() {
             ))}
           </div>
           <div className="product-list">
-            {products.length === 0 ? (
+            {showRecommend ? (
+              <div className="recommend-container">
+                <div className="recommend-section">
+                  <div className="recommend-title">
+                    <BulbOutlined style={{ color: '#fa8c16', marginRight: 6 }} />
+                    {timeRecLabel}
+                    <Tag color="orange" style={{ marginLeft: 8 }}>
+                      近7天
+                    </Tag>
+                  </div>
+                  {hotProducts.length === 0 ? (
+                    <Empty
+                      description="暂无销售数据，多卖几单就有推荐啦"
+                      style={{ marginTop: 40 }}
+                      image={Empty.PRESENTED_IMAGE_SIMPLE}
+                    />
+                  ) : (
+                    <div className="product-grid">
+                      {hotProducts.map((product) => (
+                        <div
+                          key={product.product_id}
+                          className={`product-card ${product.stock <= 0 ? 'out-of-stock' : ''}`}
+                          onClick={() => addRecommendationToCart(product)}
+                          style={{ position: 'relative' }}
+                        >
+                          <div
+                            style={{
+                              position: 'absolute',
+                              top: 6,
+                              left: 6,
+                              background: 'linear-gradient(135deg, #ff7a45, #ff4d4f)',
+                              color: '#fff',
+                              padding: '2px 6px',
+                              borderRadius: 4,
+                              fontSize: 11,
+                              fontWeight: 'bold',
+                              zIndex: 1,
+                            }}
+                          >
+                            🔥 {product.total_quantity}
+                          </div>
+                          <div className="product-image">{product.image || '📦'}</div>
+                          <div className="product-name">{product.product_name || product.name}</div>
+                          <div className="product-price">¥{product.price.toFixed(2)}</div>
+                          <div className={`product-stock ${product.stock <= 10 ? 'low' : ''}`}>
+                            库存: {product.stock}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {cart.length > 0 && cartRecommendations.length > 0 && (
+                  <div className="recommend-section" style={{ marginTop: 16 }}>
+                    <div className="recommend-title">
+                      <ShoppingOutlined style={{ color: '#52c41a', marginRight: 6 }} />
+                      买了的人还买了
+                      <Tag color="green" style={{ marginLeft: 8 }}>
+                        智能搭配
+                      </Tag>
+                    </div>
+                    <div className="product-grid">
+                      {cartRecommendations.map((rec) => (
+                        <div
+                          key={rec.product_id}
+                          className={`product-card ${rec.stock <= 0 ? 'out-of-stock' : ''}`}
+                          onClick={() => addRecommendationToCart(rec)}
+                          style={{ position: 'relative' }}
+                        >
+                          <div
+                            style={{
+                              position: 'absolute',
+                              top: 6,
+                              left: 6,
+                              background: 'linear-gradient(135deg, #52c41a, #389e0d)',
+                              color: '#fff',
+                              padding: '2px 6px',
+                              borderRadius: 4,
+                              fontSize: 11,
+                              zIndex: 1,
+                            }}
+                          >
+                            搭配
+                          </div>
+                          <div className="product-image">{rec.image || '📦'}</div>
+                          <div className="product-name">{rec.product_name}</div>
+                          <div className="product-price">¥{rec.price.toFixed(2)}</div>
+                          <div style={{ fontSize: 11, color: '#999' }}>
+                            共购 {rec.co_occurrence_count || 0} 次
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : products.length === 0 ? (
               <Empty description="暂无商品" style={{ marginTop: 60 }} />
             ) : (
               <div className="product-grid">
@@ -679,6 +873,64 @@ function Cashier() {
               ))
             )}
           </div>
+
+          {cart.length > 0 && cartRecommendations.length > 0 && (
+            <div className="cart-recommend" style={{
+              padding: '10px 12px',
+              background: '#f6ffed',
+              borderTop: '1px solid #b7eb8f',
+              borderBottom: '1px solid #b7eb8f',
+            }}>
+              <div style={{
+                fontSize: 12,
+                color: '#52c41a',
+                fontWeight: 'bold',
+                marginBottom: 8,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+              }}>
+                <BulbOutlined /> 买了的人还买了
+              </div>
+              <div style={{
+                display: 'flex',
+                gap: 6,
+                overflowX: 'auto',
+                paddingBottom: 4,
+              }}>
+                {cartRecommendations.slice(0, 5).map((rec) => (
+                  <div
+                    key={rec.product_id}
+                    onClick={() => addRecommendationToCart(rec)}
+                    style={{
+                      flexShrink: 0,
+                      width: 70,
+                      padding: 6,
+                      background: '#fff',
+                      borderRadius: 6,
+                      border: '1px solid #d9f7be',
+                      cursor: 'pointer',
+                      textAlign: 'center',
+                    }}
+                  >
+                    <div style={{ fontSize: 24 }}>{rec.image || '📦'}</div>
+                    <div style={{
+                      fontSize: 11,
+                      color: '#333',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}>
+                      {rec.product_name}
+                    </div>
+                    <div style={{ fontSize: 11, color: '#ff4d4f', fontWeight: 'bold' }}>
+                      ¥{rec.price.toFixed(2)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="cart-footer">
             <div className="cart-total">
@@ -934,6 +1186,161 @@ function Cashier() {
             <div>近7天内有即将过生日的会员，请留意！</div>
           )}
         </div>
+      </Modal>
+
+      <Modal
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <AlertOutlined style={{ color: '#fa8c16' }} />
+            智能备货预估
+            <Tag color="blue" style={{ marginLeft: 8 }}>离线预测</Tag>
+          </div>
+        }
+        open={stockForecastVisible}
+        onCancel={() => setStockForecastVisible(false)}
+        footer={[
+          <Button key="refresh" onClick={async () => {
+            recommendService.invalidateCache()
+            await loadStockAlerts()
+            message.success('预测已刷新')
+          }}>
+            刷新预测
+          </Button>,
+          <Button key="close" type="primary" onClick={() => setStockForecastVisible(false)}>
+            知道了
+          </Button>,
+        ]}
+        width={720}
+      >
+        <Row gutter={16} style={{ marginBottom: 16 }}>
+          <Col span={8}>
+            <Card size="small">
+              <Statistic
+                title="紧缺商品"
+                value={stockAlerts.filter(a => a.urgency === 'critical').length}
+                valueStyle={{ color: '#ff4d4f' }}
+                prefix="🔴"
+              />
+            </Card>
+          </Col>
+          <Col span={8}>
+            <Card size="small">
+              <Statistic
+                title="预警商品"
+                value={stockAlerts.filter(a => a.urgency === 'high').length}
+                valueStyle={{ color: '#fa8c16' }}
+                prefix="🟠"
+              />
+            </Card>
+          </Col>
+          <Col span={8}>
+            <Card size="small">
+              <Statistic
+                title="建议备货"
+                value={stockAlerts.reduce((sum, a) => sum + (a.suggested_purchase || 0), 0)}
+                valueStyle={{ color: '#52c41a' }}
+                suffix="件"
+                prefix="📦"
+              />
+            </Card>
+          </Col>
+        </Row>
+
+        <div style={{ marginBottom: 8, color: '#666', fontSize: 13 }}>
+          基于近14天销售数据预测未来7天需求 · 安全系数 1.2
+        </div>
+
+        {stockAlerts.length === 0 ? (
+          <Empty description="库存充足，暂无预警" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+        ) : (
+          <Table
+            size="small"
+            dataSource={stockAlerts.slice(0, 30)}
+            rowKey="id"
+            pagination={{ pageSize: 10, size: 'small' }}
+            columns={[
+              {
+                title: '商品',
+                dataIndex: 'product_name',
+                key: 'product_name',
+                render: (text, record) => (
+                  <div>
+                    <div>{text}</div>
+                    <div style={{ fontSize: 11, color: '#999' }}>
+                      日均销 {record.daily_avg || 0} 件
+                    </div>
+                  </div>
+                ),
+              },
+              {
+                title: '当前库存',
+                dataIndex: 'stock',
+                key: 'stock',
+                width: 90,
+                render: (v, record) => (
+                  <div style={{
+                    color: record.urgency === 'critical' ? '#ff4d4f' : record.urgency === 'high' ? '#fa8c16' : '#333',
+                    fontWeight: 'bold',
+                  }}>
+                    {v || 0}
+                  </div>
+                ),
+              },
+              {
+                title: '可售天数',
+                dataIndex: 'days_until_stockout',
+                key: 'days_until_stockout',
+                width: 80,
+                render: (v) => `${v || 0}天`,
+              },
+              {
+                title: '7天预测',
+                dataIndex: 'forecast_qty',
+                key: 'forecast_qty',
+                width: 80,
+              },
+              {
+                title: '缺口',
+                dataIndex: 'shortage',
+                key: 'shortage',
+                width: 70,
+                render: (v) => v > 0 ? (
+                  <span style={{ color: '#ff4d4f' }}>-{v}</span>
+                ) : <span style={{ color: '#52c41a' }}>充足</span>,
+              },
+              {
+                title: '建议采购',
+                dataIndex: 'suggested_purchase',
+                key: 'suggested_purchase',
+                width: 80,
+                render: (v) => v > 0 ? (
+                  <Tag color="orange">{v}件</Tag>
+                ) : '-',
+              },
+              {
+                title: '紧急度',
+                dataIndex: 'urgency',
+                key: 'urgency',
+                width: 70,
+                render: (v) => {
+                  const colorMap = {
+                    critical: 'red',
+                    high: 'orange',
+                    medium: 'gold',
+                    low: 'green',
+                  }
+                  const labelMap = {
+                    critical: '紧急',
+                    high: '高',
+                    medium: '中',
+                    low: '低',
+                  }
+                  return <Tag color={colorMap[v]}>{labelMap[v] || v}</Tag>
+                },
+              },
+            ]}
+          />
+        )}
       </Modal>
     </AppLayout>
   )
