@@ -1,0 +1,79 @@
+<view class="orders-page">
+  <view class="tabs">
+    <view
+      wx:for="{{tabs}}"
+      wx:key="key"
+      class="tab-item {{activeTab === item.key ? 'active' : ''}}"
+      data-tab="{{item.key}}"
+      bindtap="onTabTap"
+    >
+      {{item.name}}
+    </view>
+  </view>
+
+  <view wx:if="{{orderList.length === 0 && !isLoading}}" class="empty">
+    <image src="/images/empty/order-empty.png" mode="aspectFit"></image>
+    <text>暂无订单</text>
+    <view class="go-menu-btn" bindtap="onGoMenu">去点餐</view>
+  </view>
+
+  <scroll-view wx:else class="order-list" scroll-y enable-back-to-top>
+    <view
+      wx:for="{{orderList}}"
+      wx:key="id"
+      class="order-card"
+      data-id="{{item.id}}"
+      bindtap="onOrderTap"
+    >
+      <view class="order-header">
+        <text class="order-no">订单号：{{item.orderNo}}</text>
+        <text class="order-status" style="color: {{item.statusColor}}">{{item.statusText}}</text>
+      </view>
+
+      <view class="order-content">
+        <image class="goods-image" src="{{item.firstGoods.image}}" mode="aspectFill"></image>
+        <view class="goods-info">
+          <view class="goods-name text-ellipsis">{{item.firstGoods.name}}</view>
+          <view class="goods-more" wx:if="{{item.goods.length > 1}}">
+            等{{item.goods.length}}件商品
+          </view>
+          <view class="goods-count">共{{item.goodsCount}}件</view>
+        </view>
+        <view class="order-amount">
+          <text class="amount-label">合计</text>
+          <text class="amount-value">{{item.totalAmount}}</text>
+        </view>
+      </view>
+
+      <view class="order-footer">
+        <text class="order-time">{{item.createTimeText}}</text>
+        <view class="order-actions">
+          <view
+            wx:if="{{item.status === 'pending'}}"
+            class="action-btn cancel"
+            data-id="{{item.id}}"
+            catchtap="onCancelOrder"
+          >
+            取消订单
+          </view>
+          <view
+            wx:if="{{item.status === 'pending'}}"
+            class="action-btn primary"
+            data-id="{{item.id}}"
+            catchtap="onPayOrder"
+          >
+            去支付
+          </view>
+          <view
+            wx:if="{{item.status === 'completed'}}"
+            class="action-btn primary"
+            data-id="{{item.id}}"
+            catchtap="onOrderTap"
+          >
+            再来一单
+          </view>
+        </view>
+      </view>
+    </view>
+  </scroll-view>
+</view>

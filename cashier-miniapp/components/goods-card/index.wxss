@@ -1,0 +1,94 @@
+.goods-card {
+  display: flex;
+  padding: 24rpx;
+  background-color: white;
+  border-radius: 16rpx;
+  margin-bottom: 20rpx;
+}
+
+.goods-image {
+  width: 180rpx;
+  height: 180rpx;
+  border-radius: 12rpx;
+  flex-shrink: 0;
+  background-color: #f5f5f5;
+}
+
+.goods-info {
+  flex: 1;
+  margin-left: 20rpx;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.goods-name {
+  font-size: 30rpx;
+  font-weight: 500;
+  color: #333;
+}
+
+.goods-desc {
+  font-size: 24rpx;
+  color: #999;
+  margin-top: 8rpx;
+}
+
+.goods-sales {
+  font-size: 22rpx;
+  color: #999;
+  margin-top: 8rpx;
+}
+
+.goods-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 12rpx;
+}
+
+.goods-price {
+  color: #ff6b35;
+  font-size: 32rpx;
+  font-weight: bold;
+}
+
+.goods-price::before {
+  content: '¥';
+  font-size: 0.8em;
+}
+
+.quantity-control {
+  display: flex;
+  align-items: center;
+}
+
+.add-btn, .minus-btn {
+  width: 48rpx;
+  height: 48rpx;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32rpx;
+  line-height: 1;
+}
+
+.add-btn {
+  background-color: #ff6b35;
+  color: white;
+}
+
+.minus-btn {
+  background-color: #f0f0f0;
+  color: #666;
+  border: 1rpx solid #ddd;
+}
+
+.quantity-num {
+  min-width: 48rpx;
+  text-align: center;
+  font-size: 28rpx;
+  color: #333;
+  margin: 0 8rpx;
+}

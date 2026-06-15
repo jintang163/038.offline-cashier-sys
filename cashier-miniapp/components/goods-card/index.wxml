@@ -1,0 +1,16 @@
+<view class="goods-card" bindtap="onTap">
+  <image class="goods-image" src="{{goods.image}}" mode="aspectFill"></image>
+  <view class="goods-info">
+    <view class="goods-name text-ellipsis">{{goods.name}}</view>
+    <view class="goods-desc text-ellipsis">{{goods.description}}</view>
+    <view class="goods-sales">月售 {{goods.sales}}</view>
+    <view class="goods-bottom">
+      <text class="goods-price">{{goods.price}}</text>
+      <view class="quantity-control">
+        <view wx:if="{{quantity > 0}}" class="minus-btn" catchtap="onMinus">-</view>
+        <text wx:if="{{quantity > 0}}" class="quantity-num">{{quantity}}</text>
+        <view class="add-btn" catchtap="onAdd">+</view>
+      </view>
+    </view>
+  </view>
+</view>

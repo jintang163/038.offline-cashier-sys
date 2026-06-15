@@ -1,0 +1,29 @@
+spring:
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://prod-db:3306/cashier_db?useUnicode=true&characterEncoding=utf8&useSSL=true&serverTimezone=Asia/Shanghai
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:root}
+  redis:
+    host: ${REDIS_HOST:localhost}
+    port: ${REDIS_PORT:6379}
+    password: ${REDIS_PASSWORD:}
+    database: 0
+    timeout: 3000ms
+    lettuce:
+      pool:
+        max-active: 16
+        max-wait: -1ms
+        max-idle: 16
+        min-idle: 4
+  activemq:
+    broker-url: ${MQ_BROKER_URL:tcp://localhost:61616}
+    user: ${MQ_USER:admin}
+    password: ${MQ_PASSWORD:admin}
+    packages:
+      trust-all: true
+
+logging:
+  level:
+    com.cashier.server: info
+    org.springframework.web: warn

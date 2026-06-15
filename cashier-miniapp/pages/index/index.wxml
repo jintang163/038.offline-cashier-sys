@@ -1,0 +1,47 @@
+<view class="index-page">
+  <view class="network-tip" wx:if="{{!isOnline}}">
+    <text>当前处于离线模式，展示缓存数据</text>
+  </view>
+
+  <view class="main-content">
+    <scroll-view class="category-sidebar" scroll-y>
+      <view
+        wx:for="{{categories}}"
+        wx:key="id"
+        class="category-item {{item.id === currentCategoryId ? 'active' : ''}}"
+        data-id="{{item.id}}"
+        bindtap="onCategoryTap"
+      >
+        {{item.name}}
+      </view>
+    </scroll-view>
+
+    <scroll-view class="goods-list" scroll-y>
+      <view wx:if="{{goodsList.length === 0}}" class="empty">
+        <text>暂无商品</text>
+      </view>
+      <goods-card
+        wx:for="{{goodsList}}"
+        wx:key="id"
+        goods="{{item}}"
+        quantity="{{item.quantity}}"
+        bind:add="onAddToCart"
+        bind:minus="onMinusFromCart"
+      />
+    </scroll-view>
+  </view>
+
+  <view class="cart-bar" wx:if="{{cartCount > 0}}">
+    <view class="cart-info" bindtap="onGoToCart">
+      <view class="cart-icon-wrapper">
+        <text class="cart-icon">🛒</text>
+        <view class="cart-badge">{{cartCount}}</view>
+      </view>
+      <view class="cart-total">
+        <text class="total-price">{{cartTotal}}</text>
+        <text class="total-tip">另需配送费¥0</text>
+      </view>
+    </view>
+    <view class="go-pay-btn" bindtap="onGoToCart">去结算</view>
+  </view>
+</view>

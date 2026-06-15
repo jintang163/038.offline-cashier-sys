@@ -1,0 +1,5 @@
+<view class="quantity-selector">
+  <view class="btn minus {{quantity <= min ? 'disabled' : ''}}" bindtap="onMinus">-</view>
+  <input class="quantity-input" type="number" value="{{quantity}}" bindblur="onInput" />
+  <view class="btn add {{quantity >= max ? 'disabled' : ''}}" bindtap="onAdd">+</view>
+</view>
