@@ -6,6 +6,7 @@ import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import com.cashier.server.common.BusinessException;
 import com.cashier.server.config.ErpApiProperties;
+import com.cashier.server.entity.order.DailyReport;
 import com.cashier.server.entity.order.Order;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -136,6 +137,37 @@ public class ErpApiClient {
 
         Map<String, Object> response = executeWithRetry("/member/card/records/push", requestData, HttpMethod.POST);
         log.info("ERP会员卡交易推送成功, 数量={}", cardRecords.size());
+        return response;
+    }
+
+    public Map<String, Object> pushDailyReport(DailyReport dailyReport) {
+        log.info("开始调用ERP接口推送营业日报, reportNo={}, reportDate={}", dailyReport.getReportNo(), dailyReport.getReportDate());
+        Map<String, Object> requestData = new HashMap<>();
+        requestData.put("reportNo", dailyReport.getReportNo());
+        requestData.put("reportDate", dailyReport.getReportDate());
+        requestData.put("shopId", dailyReport.getShopId());
+        requestData.put("shopName", dailyReport.getShopName());
+        requestData.put("totalOrders", dailyReport.getTotalOrders());
+        requestData.put("totalAmount", dailyReport.getTotalAmount());
+        requestData.put("discountAmount", dailyReport.getDiscountAmount());
+        requestData.put("refundAmount", dailyReport.getRefundAmount());
+        requestData.put("actualAmount", dailyReport.getActualAmount());
+        requestData.put("cashAmount", dailyReport.getCashAmount());
+        requestData.put("wechatAmount", dailyReport.getWechatAmount());
+        requestData.put("alipayAmount", dailyReport.getAlipayAmount());
+        requestData.put("memberCardAmount", dailyReport.getMemberCardAmount());
+        requestData.put("otherPayAmount", dailyReport.getOtherPayAmount());
+        requestData.put("memberDiscountAmount", dailyReport.getMemberDiscountAmount());
+        requestData.put("pointsDeductionAmount", dailyReport.getPointsDeductionAmount());
+        requestData.put("totalItems", dailyReport.getTotalItems());
+        requestData.put("avgOrderAmount", dailyReport.getAvgOrderAmount());
+        requestData.put("newMemberCount", dailyReport.getNewMemberCount());
+        requestData.put("cashierId", dailyReport.getCashierId());
+        requestData.put("cashierName", dailyReport.getCashierName());
+        requestData.put("remark", dailyReport.getRemark());
+
+        Map<String, Object> response = executeWithRetry("/report/daily/push", requestData, HttpMethod.POST);
+        log.info("ERP营业日报推送成功, reportNo={}", dailyReport.getReportNo());
         return response;
     }
 

@@ -4,6 +4,7 @@ import { Menu, Badge } from 'antd'
 import {
   ShoppingCartOutlined,
   OrderedListOutlined,
+  BarChartOutlined,
   SettingOutlined,
   LogoutOutlined,
   WifiOutlined,
@@ -27,6 +28,12 @@ function AppLayout({ children }) {
       icon: <OrderedListOutlined />,
       label: '订单管理',
       onClick: () => navigate('/orders'),
+    },
+    {
+      key: '/daily-report',
+      icon: <BarChartOutlined />,
+      label: '营业日报',
+      onClick: () => navigate('/daily-report'),
     },
     {
       key: '/settings',

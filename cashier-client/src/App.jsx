@@ -4,6 +4,7 @@ import { Spin, Alert } from 'antd'
 import Login from './pages/Login'
 import Cashier from './pages/Cashier'
 import Orders from './pages/Orders'
+import DailyReport from './pages/DailyReport'
 import Settings from './pages/Settings'
 import ProtectedRoute from './components/ProtectedRoute'
 import db from './utils/db'
@@ -74,6 +75,14 @@ function App() {
         element={
           <ProtectedRoute>
             <Orders />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/daily-report"
+        element={
+          <ProtectedRoute>
+            <DailyReport />
           </ProtectedRoute>
         }
       />

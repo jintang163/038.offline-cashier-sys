@@ -2,7 +2,7 @@ import Dexie from 'dexie'
 
 const db = new Dexie('CashierCacheDB')
 
-db.version(8).stores({
+db.version(9).stores({
   products: '++id, erp_goods_id, product_name, category_id, category_name, barcode, price, original_price, unit, image, description, stock, status, sort, created_at, updated_at',
   categories: '++id, name, sort, status, created_at, updated_at',
   orders: '++id, order_no, erp_order_id, total_amount, discount_amount, pay_amount, pay_type, pay_status, order_status, sync_status, sync_attempts, sync_error, cashier_id, cashier_name, member_id, member_name, remark, created_at, synced_at',
@@ -25,6 +25,7 @@ db.version(8).stores({
   print_templates: '++id, template_code, template_name, template_type, content, paper_width, font_size, header, footer, is_default, status, sync_status, last_sync_at',
   print_queue: '++id, queue_no, order_id, order_no, printer_id, printer_code, printer_name, category_id, category_name, items, total_amount, copies, template_code, print_status, retry_count, error_message, printed_at, created_at, synced_at',
   print_history: '++id, queue_id, order_id, order_no, printer_id, printer_code, category_id, items_count, copies, print_status, print_time, cashier_id, cashier_name, created_at',
+  daily_reports: '++id, report_no, report_date, shop_id, shop_name, total_orders, total_amount, discount_amount, refund_amount, actual_amount, cash_amount, wechat_amount, alipay_amount, member_card_amount, other_pay_amount, member_discount_amount, points_deduction_amount, total_items, avg_order_amount, new_member_count, cashier_id, cashier_name, report_status, sync_status, sync_attempts, sync_error, sync_time, erp_push_status, erp_push_time, erp_push_error, remark, created_at, updated_at',
 })
 
 class DexieCache {
@@ -1404,6 +1405,237 @@ class DexieCache {
     return await db.print_history.update(id, { synced_at: new Date().toISOString() })
   }
 
+  async generateDailyReport(reportDate) {
+    const dateStr = typeof reportDate === 'string' ? reportDate : reportDate.toISOString().split('T')[0]
+    const startOfDay = new Date(dateStr + 'T00:00:00').toISOString()
+    const endOfDay = new Date(dateStr + 'T23:59:59.999').toISOString()
+
+    const orders = await db.orders
+      .filter(o => o.created_at >= startOfDay && o.created_at <= endOfDay && o.pay_status === 1)
+      .toArray()
+
+    const orderIds = orders.map(o => o.id)
+    const orderItems = orderIds.length > 0 ? await db.order_items.where('order_id').anyOf(orderIds).toArray() : []
+    const orderPayments = orderIds.length > 0 ? await db.order_payments.where('order_id').anyOf(orderIds).toArray() : []
+
+    let totalOrders = orders.length
+    let totalAmount = 0
+    let discountAmount = 0
+    let refundAmount = 0
+    let actualAmount = 0
+    let cashAmount = 0
+    let wechatAmount = 0
+    let alipayAmount = 0
+    let memberCardAmount = 0
+    let otherPayAmount = 0
+    let memberDiscountAmount = 0
+    let pointsDeductionAmount = 0
+    let totalItems = 0
+
+    const memberIds = new Set()
+    const newMemberIds = new Set()
+
+    for (const order of orders) {
+      totalAmount += parseFloat(order.total_amount) || 0
+      discountAmount += parseFloat(order.discount_amount) || 0
+      actualAmount += parseFloat(order.pay_amount) || 0
+      if (order.member_id) {
+        memberIds.add(order.member_id)
+      }
+    }
+
+    for (const item of orderItems) {
+      totalItems += parseInt(item.quantity) || 0
+      if (item.quantity < 0) {
+        refundAmount += Math.abs(parseFloat(item.pay_amount) || 0)
+      }
+    }
+
+    for (const payment of orderPayments) {
+      const payType = payment.pay_type
+      const payAmount = parseFloat(payment.pay_amount) || 0
+      if (payAmount <= 0) continue
+
+      switch (payType) {
+        case 'cash':
+          cashAmount += payAmount
+          break
+        case 'wechat':
+          wechatAmount += payAmount
+          break
+        case 'alipay':
+          alipayAmount += payAmount
+          break
+        case 'member_card':
+          memberCardAmount += payAmount
+          break
+        case 'points':
+          pointsDeductionAmount += payAmount
+          break
+        default:
+          otherPayAmount += payAmount
+          break
+      }
+    }
+
+    for (const memberId of memberIds) {
+      const member = await db.members.get(memberId)
+      if (member && member.created_at >= startOfDay && member.created_at <= endOfDay) {
+        newMemberIds.add(memberId)
+      }
+    }
+
+    const avgOrderAmount = totalOrders > 0 ? actualAmount / totalOrders : 0
+
+    const reportNo = 'DR' + dateStr.replace(/-/g, '') + Math.floor(Math.random() * 10000).toString().padStart(4, '0')
+
+    const report = {
+      report_no: reportNo,
+      report_date: dateStr,
+      total_orders: totalOrders,
+      total_amount: totalAmount.toFixed(2),
+      discount_amount: discountAmount.toFixed(2),
+      refund_amount: refundAmount.toFixed(2),
+      actual_amount: actualAmount.toFixed(2),
+      cash_amount: cashAmount.toFixed(2),
+      wechat_amount: wechatAmount.toFixed(2),
+      alipay_amount: alipayAmount.toFixed(2),
+      member_card_amount: memberCardAmount.toFixed(2),
+      other_pay_amount: otherPayAmount.toFixed(2),
+      member_discount_amount: memberDiscountAmount.toFixed(2),
+      points_deduction_amount: pointsDeductionAmount.toFixed(2),
+      total_items: totalItems,
+      avg_order_amount: avgOrderAmount.toFixed(2),
+      new_member_count: newMemberIds.size,
+      sync_status: 0,
+      sync_attempts: 0,
+      sync_error: null,
+      erp_push_status: 0,
+      erp_push_error: null,
+      report_status: 1,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }
+
+    const existing = await db.daily_reports.where('report_date').equals(dateStr).first()
+    if (existing) {
+      report.id = existing.id
+      report.sync_status = existing.sync_status
+      report.sync_attempts = existing.sync_attempts
+      report.sync_error = existing.sync_error
+      report.erp_push_status = existing.erp_push_status
+      report.erp_push_error = existing.erp_push_error
+      report.created_at = existing.created_at
+      await db.daily_reports.update(existing.id, report)
+      return { ...existing, ...report }
+    } else {
+      const id = await db.daily_reports.add(report)
+      return { ...report, id }
+    }
+  }
+
+  async getDailyReportByDate(reportDate) {
+    const dateStr = typeof reportDate === 'string' ? reportDate : reportDate.toISOString().split('T')[0]
+    return await db.daily_reports.where('report_date').equals(dateStr).first()
+  }
+
+  async getDailyReportList(params = {}) {
+    const { startDate, endDate, syncStatus, erpPushStatus, page = 1, pageSize = 20 } = params
+    let collection = db.daily_reports.orderBy('report_date').reverse()
+
+    if (startDate) {
+      collection = collection.filter(r => r.report_date >= startDate)
+    }
+    if (endDate) {
+      collection = collection.filter(r => r.report_date <= endDate)
+    }
+    if (syncStatus !== undefined && syncStatus !== null) {
+      collection = collection.filter(r => r.sync_status === syncStatus)
+    }
+    if (erpPushStatus !== undefined && erpPushStatus !== null) {
+      collection = collection.filter(r => r.erp_push_status === erpPushStatus)
+    }
+
+    const allItems = await collection.toArray()
+    const items = allItems.slice((page - 1) * pageSize, page * pageSize)
+
+    return { items, total: allItems.length, page, pageSize }
+  }
+
+  async saveDailyReport(report) {
+    const existing = report.id ? await db.daily_reports.get(report.id) : null
+    const now = new Date().toISOString()
+
+    if (existing) {
+      await db.daily_reports.update(report.id, { ...report, updated_at: now })
+      return report.id
+    } else {
+      return await db.daily_reports.add({
+        ...report,
+        created_at: now,
+        updated_at: now,
+        sync_status: report.sync_status ?? 0,
+        sync_attempts: report.sync_attempts ?? 0,
+        erp_push_status: report.erp_push_status ?? 0,
+      })
+    }
+  }
+
+  async getUnsyncedDailyReports(limit = 50) {
+    return await db.daily_reports
+      .filter(r => r.sync_status !== 1)
+      .limit(limit)
+      .sortBy('report_date')
+  }
+
+  async updateDailyReportSyncStatus(id, status, error = null) {
+    const updateData = { sync_status: status }
+    if (status === 1) {
+      updateData.sync_time = new Date().toISOString()
+      updateData.sync_error = null
+    }
+    if (error) {
+      updateData.sync_error = error
+      const report = await db.daily_reports.get(id)
+      updateData.sync_attempts = (report?.sync_attempts || 0) + 1
+    }
+    return await db.daily_reports.update(id, updateData)
+  }
+
+  async batchSaveDailyReports(reports) {
+    if (!reports || reports.length === 0) return
+    const now = new Date().toISOString()
+    for (const report of reports) {
+      const existing = report.report_date
+        ? await db.daily_reports.where('report_date').equals(report.report_date).first()
+        : report.id
+        ? await db.daily_reports.get(report.id)
+        : null
+
+      if (existing) {
+        await db.daily_reports.update(existing.id, { ...report, id: existing.id, updated_at: now })
+      } else {
+        await db.daily_reports.add({
+          ...report,
+          created_at: now,
+          updated_at: now,
+        })
+      }
+    }
+  }
+
+  async updateDailyReportErpPushStatus(id, status, error = null) {
+    const updateData = { erp_push_status: status }
+    if (status === 1) {
+      updateData.erp_push_time = new Date().toISOString()
+      updateData.erp_push_error = null
+    }
+    if (error) {
+      updateData.erp_push_error = error
+    }
+    return await db.daily_reports.update(id, updateData)
+  }
+
   async clearAll() {
     await db.products.clear()
     await db.categories.clear()
@@ -1427,6 +1659,7 @@ class DexieCache {
     await db.print_templates.clear()
     await db.print_queue.clear()
     await db.print_history.clear()
+    await db.daily_reports.clear()
     this.initialized = false
   }
 }

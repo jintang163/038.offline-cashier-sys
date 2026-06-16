@@ -221,6 +221,38 @@ class DatabaseService {
     this.initialized = false
     this.initPromise = null
   }
+
+  async generateDailyReport(reportDate) {
+    return dexieDB.generateDailyReport(reportDate)
+  }
+
+  async getDailyReportByDate(reportDate) {
+    return dexieDB.getDailyReportByDate(reportDate)
+  }
+
+  async getDailyReportList(params = {}) {
+    return dexieDB.getDailyReportList(params)
+  }
+
+  async saveDailyReport(report) {
+    return dexieDB.saveDailyReport(report)
+  }
+
+  async getUnsyncedDailyReports(limit = 50) {
+    return dexieDB.getUnsyncedDailyReports(limit)
+  }
+
+  async updateDailyReportSyncStatus(id, status, error = null) {
+    return dexieDB.updateDailyReportSyncStatus(id, status, error)
+  }
+
+  async batchSaveDailyReports(reports) {
+    return dexieDB.batchSaveDailyReports(reports)
+  }
+
+  async updateDailyReportErpPushStatus(id, status, error = null) {
+    return dexieDB.updateDailyReportErpPushStatus(id, status, error)
+  }
 }
 
 const dbService = new DatabaseService()

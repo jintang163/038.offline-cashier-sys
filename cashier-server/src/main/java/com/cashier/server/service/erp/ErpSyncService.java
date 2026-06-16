@@ -4,6 +4,7 @@ import com.cashier.server.entity.member.Member;
 import com.cashier.server.entity.member.MemberCard;
 import com.cashier.server.entity.member.MemberCardRecord;
 import com.cashier.server.entity.member.PointRecord;
+import com.cashier.server.entity.order.DailyReport;
 import com.cashier.server.entity.order.Order;
 import com.cashier.server.entity.order.SalesSummary;
 import com.cashier.server.entity.product.Product;
@@ -59,4 +60,6 @@ public interface ErpSyncService {
     Member syncOrUpdateMember(Map<String, Object> memberData);
 
     MemberCard syncOrUpdateMemberCard(Map<String, Object> cardData);
+
+    boolean pushDailyReportToErp(DailyReport dailyReport);
 }

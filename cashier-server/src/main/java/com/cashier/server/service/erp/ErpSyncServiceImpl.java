@@ -649,4 +649,27 @@ public class ErpSyncServiceImpl implements ErpSyncService {
 
         return card;
     }
+
+    @Override
+    public boolean pushDailyReportToErp(DailyReport dailyReport) {
+        if (dailyReport == null) {
+            throw new BusinessException("营业日报不能为空");
+        }
+        log.info("推送营业日报到ERP: reportNo={}, reportDate={}", dailyReport.getReportNo(), dailyReport.getReportDate());
+        try {
+            Map<String, Object> response = erpApiClient.pushDailyReport(dailyReport);
+            Integer code = response.get("code") != null ? Integer.valueOf(response.get("code").toString()) : null;
+            if (code != null && code == 200) {
+                log.info("推送营业日报到ERP成功: reportNo={}", dailyReport.getReportNo());
+                return true;
+            } else {
+                String message = response.get("message") != null ? response.get("message").toString() : "未知错误";
+                log.warn("推送营业日报到ERP返回失败: reportNo={}, code={}, message={}", dailyReport.getReportNo(), code, message);
+                return false;
+            }
+        } catch (Exception e) {
+            log.error("推送营业日报到ERP失败: reportNo={}, error={}", dailyReport.getReportNo(), e.getMessage());
+            throw new BusinessException("推送营业日报到ERP失败: " + e.getMessage());
+        }
+    }
 }

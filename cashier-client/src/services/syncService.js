@@ -1,5 +1,6 @@
 import db from '../db/dexie'
 import api from '../api/request'
+import dailyReportService from './dailyReportService'
 
 class SyncService {
   constructor() {
@@ -507,6 +508,37 @@ class SyncService {
     }
   }
 
+  async syncDailyReports() {
+    if (!navigator.onLine) {
+      throw new Error('OFFLINE')
+    }
+
+    this.emit('syncStart', { type: 'dailyReports' })
+    this.emit('statusChange', { type: 'dailyReports', status: 'syncing' })
+
+    try {
+      const result = await dailyReportService.syncReports()
+      const success = result.success === true || result.failed === 0
+
+      await db.setSetting('lastDailyReportSyncTime', new Date().toISOString())
+      await db.addSyncRecord('dailyReports', success ? 'success' : 'partial', result)
+
+      this.emit('syncComplete', { type: 'dailyReports', success, result })
+      this.emit('statusChange', {
+        type: 'dailyReports',
+        status: success ? 'success' : 'partial',
+        result,
+      })
+
+      return result
+    } catch (error) {
+      await db.addSyncRecord('dailyReports', 'failed', { error: error.message })
+      this.emit('syncComplete', { type: 'dailyReports', success: false, error: error.message })
+      this.emit('statusChange', { type: 'dailyReports', status: 'failed', error: error.message })
+      throw error
+    }
+  }
+
   async fullSync() {
     if (this.syncing) {
       return { success: false, message: '正在同步中，请稍后再试' }
@@ -570,6 +602,13 @@ class SyncService {
         failed: 0,
       }))
 
+      const dailyReportResult = await this.syncDailyReports().catch((e) => ({
+        success: false,
+        error: e.message,
+        success: 0,
+        failed: 0,
+      }))
+
       return {
         success: true,
         products: productResult,
@@ -580,6 +619,7 @@ class SyncService {
         memberCardRecords: cardRecordResult,
         printerConfig: printerConfigResult,
         printHistory: printHistoryResult,
+        dailyReports: dailyReportResult,
       }
     } finally {
       this.syncing = false
