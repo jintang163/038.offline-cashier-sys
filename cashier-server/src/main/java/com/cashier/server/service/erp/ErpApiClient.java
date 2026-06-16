@@ -3,11 +3,13 @@ package com.cashier.server.service.erp;
 import cn.hutool.core.codec.Base64;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.crypto.SecureUtil;
+import cn.hutool.json.JSONUtil;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import com.cashier.server.common.BusinessException;
 import com.cashier.server.config.ErpApiProperties;
 import com.cashier.server.entity.erp.ErpConfig;
+import com.cashier.server.entity.erp.ErpInterfaceMapping;
 import com.cashier.server.entity.erp.ErpSyncLog;
 import com.cashier.server.entity.member.MemberCardRecord;
 import com.cashier.server.entity.member.PointRecord;
@@ -42,6 +44,12 @@ public class ErpApiClient {
     @Autowired
     private ErpSyncLogService syncLogService;
 
+    @Autowired
+    private DynamicErpSyncService dynamicErpSyncService;
+
+    @Autowired
+    private ErpInterfaceMappingService interfaceMappingService;
+
     private final RestTemplate restTemplate;
 
     public ErpApiClient() {
@@ -60,12 +68,125 @@ public class ErpApiClient {
         }
     }
 
+    private ErpConfig resolveConfig(Long configId) {
+        if (configId != null) {
+            try {
+                return dynamicErpConfigManager.getConfigById(configId);
+            } catch (Exception e) {
+                log.warn("获取指定ID的ERP配置失败, configId={}, error={}", configId, e.getMessage());
+            }
+        }
+        return resolveConfig();
+    }
+
+    private boolean hasDynamicMapping(Long configId, String businessType, String syncDirection) {
+        try {
+            ErpConfig config = resolveConfig(configId);
+            if (config == null || config.getId() == null) {
+                return false;
+            }
+            ErpInterfaceMapping mapping = interfaceMappingService.getByBusinessType(
+                    config.getId(), businessType, syncDirection);
+            return mapping != null && mapping.getStatus() != null && mapping.getStatus() == 1;
+        } catch (Exception e) {
+            log.warn("检查动态映射配置失败, businessType={}, error={}", businessType, e.getMessage());
+            return false;
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> executeDynamicPush(Long configId, String businessType,
+                                                    Object businessData, String businessId, ErpSyncLog syncLog) {
+        try {
+            cn.hutool.json.JSONObject dataObj;
+            if (businessData instanceof Map) {
+                dataObj = JSONUtil.parseObj(businessData);
+            } else {
+                dataObj = JSONUtil.parseObj(JSON.toJSONString(businessData));
+            }
+
+            cn.hutool.json.JSONObject result = dynamicErpSyncService.executeDynamicSync(
+                    configId, businessType, "PUSH", "AUTO", dataObj, businessId);
+
+            return JSON.parseObject(JSONUtil.toJsonStr(result), Map.class);
+        } catch (Exception e) {
+            log.error("动态ERP推送失败, businessType={}, error={}", businessType, e.getMessage(), e);
+            throw e instanceof RuntimeException ? (RuntimeException) e : new BusinessException(e.getMessage(), e);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> executeDynamicPullList(Long configId, String businessType,
+                                                              Object businessData, String businessId) {
+        try {
+            cn.hutool.json.JSONObject dataObj;
+            if (businessData instanceof Map) {
+                dataObj = JSONUtil.parseObj(businessData);
+            } else if (businessData != null) {
+                dataObj = JSONUtil.parseObj(JSON.toJSONString(businessData));
+            } else {
+                dataObj = new cn.hutool.json.JSONObject();
+            }
+
+            cn.hutool.json.JSONObject result = dynamicErpSyncService.executeDynamicSync(
+                    configId, businessType, "PULL", "AUTO", dataObj, businessId);
+
+            Object data = result.get("data");
+            if (data == null) {
+                return new ArrayList<>();
+            }
+            if (data instanceof List) {
+                return (List<Map<String, Object>>) JSON.parseArray(
+                        JSONUtil.toJsonStr(data), Map.class);
+            }
+            List<Map<String, Object>> list = new ArrayList<>();
+            list.add(JSON.parseObject(JSONUtil.toJsonStr(data), Map.class));
+            return list;
+        } catch (Exception e) {
+            log.error("动态ERP拉取列表失败, businessType={}, error={}", businessType, e.getMessage(), e);
+            throw e instanceof RuntimeException ? (RuntimeException) e : new BusinessException(e.getMessage(), e);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> executeDynamicPullOne(Long configId, String businessType,
+                                                       Object businessData, String businessId) {
+        try {
+            cn.hutool.json.JSONObject dataObj;
+            if (businessData instanceof Map) {
+                dataObj = JSONUtil.parseObj(businessData);
+            } else if (businessData != null) {
+                dataObj = JSONUtil.parseObj(JSON.toJSONString(businessData));
+            } else {
+                dataObj = new cn.hutool.json.JSONObject();
+            }
+
+            cn.hutool.json.JSONObject result = dynamicErpSyncService.executeDynamicSync(
+                    configId, businessType, "PULL", "AUTO", dataObj, businessId);
+
+            Object data = result.get("data");
+            if (data == null) {
+                return null;
+            }
+            return JSON.parseObject(JSONUtil.toJsonStr(data), Map.class);
+        } catch (Exception e) {
+            log.error("动态ERP拉取单条失败, businessType={}, error={}", businessType, e.getMessage(), e);
+            throw e instanceof RuntimeException ? (RuntimeException) e : new BusinessException(e.getMessage(), e);
+        }
+    }
+
     public List<Map<String, Object>> getProducts() {
         return getProducts(null);
     }
 
     public List<Map<String, Object>> getProducts(Long configId) {
         log.info("开始调用ERP接口获取商品列表");
+
+        if (hasDynamicMapping(configId, "PRODUCT_LIST", "PULL")) {
+            log.info("使用动态映射配置调用商品列表接口");
+            return executeDynamicPullList(configId, "PRODUCT_LIST", null, null);
+        }
+
         ErpSyncLog syncLog = createSyncLog(configId, "PRODUCT_LIST", "PULL", "AUTO");
         try {
             Map<String, Object> response = executeWithRetry("/product/list", new HashMap<>(), HttpMethod.POST, configId, syncLog);
@@ -87,6 +208,12 @@ public class ErpApiClient {
 
     public List<Map<String, Object>> getStock(Long configId) {
         log.info("开始调用ERP接口获取库存列表");
+
+        if (hasDynamicMapping(configId, "STOCK_LIST", "PULL")) {
+            log.info("使用动态映射配置调用库存列表接口");
+            return executeDynamicPullList(configId, "STOCK_LIST", null, null);
+        }
+
         ErpSyncLog syncLog = createSyncLog(configId, "STOCK_LIST", "PULL", "AUTO");
         try {
             Map<String, Object> response = executeWithRetry("/stock/list", new HashMap<>(), HttpMethod.POST, configId, syncLog);
@@ -108,23 +235,17 @@ public class ErpApiClient {
 
     public Map<String, Object> createOrder(Order order, Long configId) {
         log.info("开始调用ERP接口创建订单, orderId={}, orderNo={}", order.getId(), order.getOrderNo());
+
+        if (hasDynamicMapping(configId, "ORDER_CREATE", "PUSH")) {
+            log.info("使用动态映射配置创建订单");
+            Map<String, Object> orderMap = buildOrderMap(order);
+            return executeDynamicPush(configId, "ORDER_CREATE", orderMap, order.getOrderNo(), null);
+        }
+
         ErpSyncLog syncLog = createSyncLog(configId, "ORDER_CREATE", "PUSH", "AUTO");
         syncLogService.updateBusinessId(syncLog.getId(), order.getOrderNo());
         try {
-            Map<String, Object> requestData = new HashMap<>();
-            requestData.put("orderId", order.getId());
-            requestData.put("orderNo", order.getOrderNo());
-            requestData.put("erpOrderId", order.getErpOrderId());
-            requestData.put("totalAmount", order.getTotalAmount());
-            requestData.put("discountAmount", order.getDiscountAmount());
-            requestData.put("payAmount", order.getPayAmount());
-            requestData.put("payStatus", order.getPayStatus());
-            requestData.put("orderStatus", order.getOrderStatus());
-            requestData.put("cashierId", order.getCashierId());
-            requestData.put("cashierName", order.getCashierName());
-            requestData.put("remark", order.getRemark());
-            requestData.put("createTime", order.getCreateTime());
-
+            Map<String, Object> requestData = buildOrderMap(order);
             Map<String, Object> response = executeWithRetry("/order/create", requestData, HttpMethod.POST, configId, syncLog);
             log.info("ERP订单创建成功, orderId={}, response={}", order.getId(), response);
             updateLogSuccess(syncLog, JSON.toJSONString(response));
@@ -133,6 +254,23 @@ public class ErpApiClient {
             updateLogFail(syncLog, null, null, e.getMessage());
             throw e;
         }
+    }
+
+    private Map<String, Object> buildOrderMap(Order order) {
+        Map<String, Object> requestData = new HashMap<>();
+        requestData.put("orderId", order.getId());
+        requestData.put("orderNo", order.getOrderNo());
+        requestData.put("erpOrderId", order.getErpOrderId());
+        requestData.put("totalAmount", order.getTotalAmount());
+        requestData.put("discountAmount", order.getDiscountAmount());
+        requestData.put("payAmount", order.getPayAmount());
+        requestData.put("payStatus", order.getPayStatus());
+        requestData.put("orderStatus", order.getOrderStatus());
+        requestData.put("cashierId", order.getCashierId());
+        requestData.put("cashierName", order.getCashierName());
+        requestData.put("remark", order.getRemark());
+        requestData.put("createTime", order.getCreateTime());
+        return requestData;
     }
 
     public Map<String, Object> updateStock(String erpGoodsId, Integer stock) {

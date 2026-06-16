@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/erp/interface-mapping")
@@ -24,6 +25,16 @@ public class ErpInterfaceMappingController {
             @RequestParam(required = false) String businessType,
             @RequestParam(required = false) String syncDirection) {
         return Result.success(interfaceMappingService.page(pageNum, pageSize, configId, businessType, syncDirection));
+    }
+
+    @GetMapping("/list")
+    public Result<IPage<ErpInterfaceMapping>> list(
+            @RequestParam(defaultValue = "1") int pageNum,
+            @RequestParam(defaultValue = "20") int pageSize,
+            @RequestParam(required = false) Long configId,
+            @RequestParam(required = false) String businessType,
+            @RequestParam(required = false) String syncDirection) {
+        return page(pageNum, pageSize, configId, businessType, syncDirection);
     }
 
     @GetMapping("/list/{configId}")
@@ -62,6 +73,13 @@ public class ErpInterfaceMappingController {
         return success ? Result.success() : Result.fail("更新失败");
     }
 
+    @PutMapping("/{id}")
+    public Result<Void> updateById(@PathVariable Long id, @RequestBody ErpInterfaceMapping entity) {
+        entity.setId(id);
+        boolean success = interfaceMappingService.update(entity);
+        return success ? Result.success() : Result.fail("更新失败");
+    }
+
     @DeleteMapping("/{id}")
     public Result<Void> remove(@PathVariable Long id) {
         boolean success = interfaceMappingService.removeById(id);
@@ -69,7 +87,13 @@ public class ErpInterfaceMappingController {
     }
 
     @PutMapping("/{id}/status")
-    public Result<Void> updateStatus(@PathVariable Long id, @RequestParam Integer status) {
+    public Result<Void> updateStatus(@PathVariable Long id, @RequestParam(required = false) Integer status, @RequestBody(required = false) Map<String, Object> body) {
+        if (status == null && body != null && body.get("status") != null) {
+            status = Integer.valueOf(body.get("status").toString());
+        }
+        if (status == null) {
+            return Result.fail("status参数不能为空");
+        }
         boolean success = interfaceMappingService.updateStatus(id, status);
         return success ? Result.success() : Result.fail("更新状态失败");
     }

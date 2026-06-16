@@ -15,6 +15,8 @@ public interface ErpInterfaceMappingService {
 
     ErpInterfaceMapping getByBusinessType(Long configId, String businessType);
 
+    ErpInterfaceMapping getByBusinessType(Long configId, String businessType, String syncDirection);
+
     boolean save(ErpInterfaceMapping entity);
 
     boolean update(ErpInterfaceMapping entity);

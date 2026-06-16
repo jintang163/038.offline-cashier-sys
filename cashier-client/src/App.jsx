@@ -11,6 +11,14 @@ import ProtectedRoute from './components/ProtectedRoute'
 import db from './utils/db'
 import syncService from './services/syncService'
 import kitchenPrintService from './services/kitchenPrintService'
+import ErpConfigPage from './pages/erp/ErpConfigPage'
+import ErpInterfaceMappingPage from './pages/erp/ErpInterfaceMappingPage'
+import ErpFieldMappingPage from './pages/erp/ErpFieldMappingPage'
+import ErpDataMappingPage from './pages/erp/ErpDataMappingPage'
+import ErpSyncLogPage from './pages/erp/ErpSyncLogPage'
+import ErpSyncTaskPage from './pages/erp/ErpSyncTaskPage'
+import ErpProductSyncStrategyPage from './pages/erp/ErpProductSyncStrategyPage'
+import ErpMonitorDashboard from './pages/erp/ErpMonitorDashboard'
 
 function App() {
   const [dbInit, setDbInit] = useState(false)
@@ -96,6 +104,70 @@ function App() {
         element={
           <ProtectedRoute>
             <Settings />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/erp/config"
+        element={
+          <ProtectedRoute>
+            <ErpConfigPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/erp/interface-mapping"
+        element={
+          <ProtectedRoute>
+            <ErpInterfaceMappingPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/erp/field-mapping"
+        element={
+          <ProtectedRoute>
+            <ErpFieldMappingPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/erp/data-mapping"
+        element={
+          <ProtectedRoute>
+            <ErpDataMappingPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/erp/sync-log"
+        element={
+          <ProtectedRoute>
+            <ErpSyncLogPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/erp/sync-task"
+        element={
+          <ProtectedRoute>
+            <ErpSyncTaskPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/erp/product-sync-strategy"
+        element={
+          <ProtectedRoute>
+            <ErpProductSyncStrategyPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/erp/monitor"
+        element={
+          <ProtectedRoute>
+            <ErpMonitorDashboard />
           </ProtectedRoute>
         }
       />

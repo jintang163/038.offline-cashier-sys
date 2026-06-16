@@ -65,4 +65,102 @@ public class ErpFieldMappingController {
         boolean success = fieldMappingService.batchSaveOrUpdate(interfaceMappingId, direction, mappings);
         return success ? Result.success() : Result.fail("批量保存失败");
     }
+
+    @GetMapping("/list")
+    public Result<List<ErpFieldMapping>> list(
+            @RequestParam(required = false) Long interfaceMappingId,
+            @RequestParam(required = false) String direction) {
+        if (interfaceMappingId == null) {
+            return Result.success(java.util.Collections.emptyList());
+        }
+        if (direction != null) {
+            return Result.success(fieldMappingService.listByInterfaceAndDirection(interfaceMappingId, direction));
+        }
+        return Result.success(fieldMappingService.listByInterfaceId(interfaceMappingId));
+    }
+
+    @PostMapping("/batch-save")
+    public Result<Void> batchSave(@RequestBody Object body) {
+        Long interfaceMappingId = null;
+        String direction = "REQUEST";
+        List<ErpFieldMapping> mappings;
+
+        if (body instanceof List) {
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> list = (List<Map<String, Object>>) body;
+            mappings = new java.util.ArrayList<>();
+            for (Map<String, Object> item : list) {
+                ErpFieldMapping mapping = new ErpFieldMapping();
+                if (item.get("id") != null) {
+                    mapping.setId(Long.valueOf(item.get("id").toString()));
+                }
+                if (item.get("interfaceMappingId") != null) {
+                    mapping.setInterfaceMappingId(Long.valueOf(item.get("interfaceMappingId").toString()));
+                }
+                if (item.get("direction") != null) {
+                    mapping.setMappingDirection(item.get("direction").toString());
+                } else if (item.get("mappingDirection") != null) {
+                    mapping.setMappingDirection(item.get("mappingDirection").toString());
+                }
+                if (item.get("localField") != null) {
+                    mapping.setLocalField(item.get("localField").toString());
+                }
+                if (item.get("localFieldType") != null) {
+                    mapping.setLocalFieldType(item.get("localFieldType").toString());
+                }
+                if (item.get("erpField") != null) {
+                    mapping.setErpField(item.get("erpField").toString());
+                }
+                if (item.get("erpFieldType") != null) {
+                    mapping.setErpFieldType(item.get("erpFieldType").toString());
+                }
+                if (item.get("isRequired") != null) {
+                    mapping.setIsRequired(Integer.valueOf(item.get("isRequired").toString()));
+                }
+                if (item.get("defaultValue") != null) {
+                    mapping.setDefaultValue(item.get("defaultValue").toString());
+                }
+                if (item.get("transformExpression") != null) {
+                    mapping.setTransformExpression(item.get("transformExpression").toString());
+                }
+                if (item.get("sort") != null) {
+                    mapping.setSort(Integer.valueOf(item.get("sort").toString()));
+                }
+                if (item.get("status") != null) {
+                    mapping.setStatus(Integer.valueOf(item.get("status").toString()));
+                }
+                if (item.get("remark") != null) {
+                    mapping.setRemark(item.get("remark").toString());
+                }
+                mappings.add(mapping);
+            }
+            if (!mappings.isEmpty()) {
+                ErpFieldMapping first = mappings.get(0);
+                if (first.getInterfaceMappingId() != null) {
+                    interfaceMappingId = first.getInterfaceMappingId();
+                }
+                if (first.getMappingDirection() != null) {
+                    direction = first.getMappingDirection();
+                }
+            }
+        } else if (body instanceof Map) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> params = (Map<String, Object>) body;
+            interfaceMappingId = params.get("interfaceMappingId") != null
+                    ? Long.valueOf(params.get("interfaceMappingId").toString()) : null;
+            direction = params.get("direction") != null ? params.get("direction").toString() : "REQUEST";
+            @SuppressWarnings("unchecked")
+            List<ErpFieldMapping> list = params.get("mappings") != null
+                    ? (List<ErpFieldMapping>) params.get("mappings") : java.util.Collections.emptyList();
+            mappings = list;
+        } else {
+            return Result.fail("请求参数格式错误");
+        }
+
+        if (interfaceMappingId == null) {
+            return Result.fail("interfaceMappingId不能为空");
+        }
+        boolean success = fieldMappingService.batchSaveOrUpdate(interfaceMappingId, direction, mappings);
+        return success ? Result.success() : Result.fail("批量保存失败");
+    }
 }

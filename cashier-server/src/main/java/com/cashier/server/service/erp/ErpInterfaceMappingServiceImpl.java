@@ -56,6 +56,16 @@ public class ErpInterfaceMappingServiceImpl extends ServiceImpl<ErpInterfaceMapp
     }
 
     @Override
+    public ErpInterfaceMapping getByBusinessType(Long configId, String businessType, String syncDirection) {
+        return this.lambdaQuery()
+                .eq(ErpInterfaceMapping::getConfigId, configId)
+                .eq(ErpInterfaceMapping::getBusinessType, businessType)
+                .eq(ErpInterfaceMapping::getSyncDirection, syncDirection)
+                .eq(ErpInterfaceMapping::getStatus, 1)
+                .one();
+    }
+
+    @Override
     public boolean save(ErpInterfaceMapping entity) {
         ErpInterfaceMapping exist = this.lambdaQuery()
                 .eq(ErpInterfaceMapping::getConfigId, entity.getConfigId())

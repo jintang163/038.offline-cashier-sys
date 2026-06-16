@@ -37,6 +37,11 @@ public class ErpFieldMappingServiceImpl extends ServiceImpl<ErpFieldMappingMappe
     }
 
     @Override
+    public List<ErpFieldMapping> getByInterfaceMappingId(Long interfaceMappingId, String direction) {
+        return listByInterfaceAndDirection(interfaceMappingId, direction);
+    }
+
+    @Override
     public ErpFieldMapping getById(Long id) {
         return this.baseMapper.selectById(id);
     }

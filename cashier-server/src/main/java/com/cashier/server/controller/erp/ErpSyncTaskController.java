@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/erp/sync-task")
@@ -53,6 +54,13 @@ public class ErpSyncTaskController {
         return success ? Result.success() : Result.fail("更新失败");
     }
 
+    @PutMapping("/{id}")
+    public Result<Void> updateById(@PathVariable Long id, @RequestBody ErpSyncTask entity) {
+        entity.setId(id);
+        boolean success = syncTaskService.update(entity);
+        return success ? Result.success() : Result.fail("更新失败");
+    }
+
     @DeleteMapping("/{id}")
     public Result<Void> remove(@PathVariable Long id) {
         boolean success = syncTaskService.removeById(id);
@@ -60,7 +68,13 @@ public class ErpSyncTaskController {
     }
 
     @PutMapping("/{id}/status")
-    public Result<Void> updateStatus(@PathVariable Long id, @RequestParam Integer status) {
+    public Result<Void> updateStatus(@PathVariable Long id, @RequestParam(required = false) Integer status, @RequestBody(required = false) Map<String, Object> body) {
+        if (status == null && body != null && body.get("status") != null) {
+            status = Integer.valueOf(body.get("status").toString());
+        }
+        if (status == null) {
+            return Result.fail("status参数不能为空");
+        }
         boolean success = syncTaskService.updateStatus(id, status);
         return success ? Result.success() : Result.fail("更新状态失败");
     }
@@ -77,6 +91,12 @@ public class ErpSyncTaskController {
         return Result.success();
     }
 
+    @PostMapping("/{id}/execute")
+    public Result<Void> executeById(@PathVariable Long id) {
+        syncTaskService.executeManually(id);
+        return Result.success();
+    }
+
     @PostMapping("/refresh/{id}")
     public Result<Void> refreshTask(@PathVariable Long id) {
         syncTaskService.refreshTask(id);
@@ -85,6 +105,12 @@ public class ErpSyncTaskController {
 
     @PostMapping("/refresh-all")
     public Result<Void> refreshAll() {
+        syncTaskService.refreshAll();
+        return Result.success();
+    }
+
+    @PostMapping("/refresh-scheduler")
+    public Result<Void> refreshScheduler() {
         syncTaskService.refreshAll();
         return Result.success();
     }

@@ -1,8 +1,9 @@
 package com.cashier.server.service.erp;
 
 import cn.hutool.core.util.StrUtil;
+import cn.hutool.json.JSONObject;
+import cn.hutool.json.JSONUtil;
 import com.alibaba.fastjson.JSON;
-import com.alibaba.fastjson.JSONObject;
 import com.cashier.server.entity.erp.ErpFieldMapping;
 import com.cashier.server.entity.erp.ErpInterfaceMapping;
 import com.cashier.server.mapper.erp.ErpFieldMappingMapper;
@@ -236,5 +237,129 @@ public class FieldMappingEngine {
         }
         String json = JSON.toJSONString(map);
         return JSON.parseObject(json, clazz);
+    }
+
+    public JSONObject mapRequest(JSONObject source, List<ErpFieldMapping> fieldMappings,
+                                  Long configId, String businessType, DataMappingEngine dataMappingEngine) {
+        JSONObject result = JSONUtil.createObj();
+        if (source == null || fieldMappings == null || fieldMappings.isEmpty()) {
+            return result;
+        }
+        Map<String, Object> context = new HashMap<>();
+        for (ErpFieldMapping mapping : fieldMappings) {
+            if (!"REQUEST".equals(mapping.getMappingDirection())) {
+                continue;
+            }
+            try {
+                Object value = getValueFromJsonObject(source, mapping.getLocalField());
+
+                if (value == null) {
+                    value = mapping.getDefaultValue();
+                }
+
+                if (value == null && mapping.getIsRequired() != null && mapping.getIsRequired() == 1) {
+                    log.warn("必填字段为空: localField={}, erpField={}", mapping.getLocalField(), mapping.getErpField());
+                    continue;
+                }
+
+                if (value != null) {
+                    value = convertType(value, mapping.getErpFieldType());
+                }
+
+                if (value != null && dataMappingEngine != null) {
+                    value = dataMappingEngine.toErpCode(configId, businessType, value != null ? value.toString() : null);
+                }
+
+                if (value != null && StrUtil.isNotBlank(mapping.getTransformExpression())) {
+                    context.putAll(source);
+                    value = expressionEngine.execute(mapping.getTransformExpression(), value, context);
+                }
+
+                setValueToJsonObject(result, mapping.getErpField(), value);
+            } catch (Exception e) {
+                log.error("字段映射转换失败(REQUEST): localField={}, erpField={}, error={}",
+                        mapping.getLocalField(), mapping.getErpField(), e.getMessage());
+            }
+        }
+        return result;
+    }
+
+    public JSONObject mapResponse(JSONObject source, List<ErpFieldMapping> fieldMappings,
+                                   Long configId, String businessType, DataMappingEngine dataMappingEngine) {
+        JSONObject result = JSONUtil.createObj();
+        if (source == null || fieldMappings == null || fieldMappings.isEmpty()) {
+            return result;
+        }
+        Map<String, Object> context = new HashMap<>();
+        for (ErpFieldMapping mapping : fieldMappings) {
+            if (!"RESPONSE".equals(mapping.getMappingDirection())) {
+                continue;
+            }
+            try {
+                Object value = getValueFromJsonObject(source, mapping.getErpField());
+
+                if (value == null) {
+                    value = mapping.getDefaultValue();
+                }
+
+                if (value == null && mapping.getIsRequired() != null && mapping.getIsRequired() == 1) {
+                    continue;
+                }
+
+                if (value != null) {
+                    value = convertType(value, mapping.getLocalFieldType());
+                }
+
+                if (value != null && dataMappingEngine != null) {
+                    value = dataMappingEngine.toLocalCode(configId, businessType, value != null ? value.toString() : null);
+                }
+
+                if (value != null && StrUtil.isNotBlank(mapping.getTransformExpression())) {
+                    context.putAll(source);
+                    value = expressionEngine.execute(mapping.getTransformExpression(), value, context);
+                }
+
+                setValueToJsonObject(result, mapping.getLocalField(), value);
+            } catch (Exception e) {
+                log.error("字段映射转换失败(RESPONSE): erpField={}, localField={}, error={}",
+                        mapping.getErpField(), mapping.getLocalField(), e.getMessage());
+            }
+        }
+        return result;
+    }
+
+    private Object getValueFromJsonObject(JSONObject obj, String fieldPath) {
+        if (obj == null || StrUtil.isBlank(fieldPath)) {
+            return null;
+        }
+        String[] paths = fieldPath.split("\\.");
+        Object current = obj;
+        for (String path : paths) {
+            if (current instanceof JSONObject) {
+                current = ((JSONObject) current).get(path);
+            } else {
+                return null;
+            }
+            if (current == null) {
+                return null;
+            }
+        }
+        return current;
+    }
+
+    private void setValueToJsonObject(JSONObject obj, String fieldPath, Object value) {
+        if (obj == null || StrUtil.isBlank(fieldPath)) {
+            return;
+        }
+        String[] paths = fieldPath.split("\\.");
+        JSONObject current = obj;
+        for (int i = 0; i < paths.length - 1; i++) {
+            String path = paths[i];
+            if (!current.containsKey(path) || !(current.get(path) instanceof JSONObject)) {
+                current.set(path, JSONUtil.createObj());
+            }
+            current = (JSONObject) current.get(path);
+        }
+        current.set(paths[paths.length - 1], value);
     }
 }

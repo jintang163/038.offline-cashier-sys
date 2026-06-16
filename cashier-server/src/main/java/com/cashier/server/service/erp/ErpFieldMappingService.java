@@ -10,6 +10,8 @@ public interface ErpFieldMappingService {
 
     List<ErpFieldMapping> listByInterfaceAndDirection(Long interfaceMappingId, String direction);
 
+    List<ErpFieldMapping> getByInterfaceMappingId(Long interfaceMappingId, String direction);
+
     ErpFieldMapping getById(Long id);
 
     boolean save(ErpFieldMapping entity);

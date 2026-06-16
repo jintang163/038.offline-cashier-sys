@@ -8,6 +8,14 @@ import {
   SettingOutlined,
   LogoutOutlined,
   WifiOutlined,
+  DatabaseOutlined,
+  ApiOutlined,
+  SwapOutlined,
+  FileTextOutlined,
+  ScheduleOutlined,
+  ProductOutlined,
+  DashboardOutlined,
+  AppstoreOutlined,
 } from '@ant-design/icons'
 import useNetworkStatus from '../hooks/useNetwork'
 
@@ -40,6 +48,61 @@ function AppLayout({ children }) {
       icon: <SettingOutlined />,
       label: '系统设置',
       onClick: () => navigate('/settings'),
+    },
+    {
+      key: 'erp',
+      icon: <AppstoreOutlined />,
+      label: 'ERP对接中心',
+      children: [
+        {
+          key: '/erp/monitor',
+          icon: <DashboardOutlined />,
+          label: '监控大屏',
+          onClick: () => navigate('/erp/monitor'),
+        },
+        {
+          key: '/erp/config',
+          icon: <DatabaseOutlined />,
+          label: 'ERP配置',
+          onClick: () => navigate('/erp/config'),
+        },
+        {
+          key: '/erp/interface-mapping',
+          icon: <ApiOutlined />,
+          label: '接口映射',
+          onClick: () => navigate('/erp/interface-mapping'),
+        },
+        {
+          key: '/erp/field-mapping',
+          icon: <SwapOutlined />,
+          label: '字段映射',
+          onClick: () => navigate('/erp/field-mapping'),
+        },
+        {
+          key: '/erp/data-mapping',
+          icon: <SwapOutlined />,
+          label: '数据映射',
+          onClick: () => navigate('/erp/data-mapping'),
+        },
+        {
+          key: '/erp/sync-log',
+          icon: <FileTextOutlined />,
+          label: '同步日志',
+          onClick: () => navigate('/erp/sync-log'),
+        },
+        {
+          key: '/erp/sync-task',
+          icon: <ScheduleOutlined />,
+          label: '调度任务',
+          onClick: () => navigate('/erp/sync-task'),
+        },
+        {
+          key: '/erp/product-sync-strategy',
+          icon: <ProductOutlined />,
+          label: '商品同步策略',
+          onClick: () => navigate('/erp/product-sync-strategy'),
+        },
+      ],
     },
     {
       key: 'logout',
