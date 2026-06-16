@@ -8,6 +8,7 @@ import com.cashier.server.entity.stock.StockCheckTask;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 public interface StockCheckTaskService extends IService<StockCheckTask> {
 
@@ -38,4 +39,14 @@ public interface StockCheckTaskService extends IService<StockCheckTask> {
     boolean syncTaskToErp(Long taskId);
 
     boolean syncDiffToErp(Long diffId);
+
+    boolean syncOrUpdateTaskFromErp(Map<String, Object> taskData);
+
+    boolean syncTaskItemsFromErp(String erpTaskId, List<Map<String, Object>> items);
+
+    Map<String, Object> buildErpCheckResult(Long taskId);
+
+    Map<String, Object> buildErpDiffData(Long diffId);
+
+    Map<String, Object> completeCheckProcess(Long taskId);
 }

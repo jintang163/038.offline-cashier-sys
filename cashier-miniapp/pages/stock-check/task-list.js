@@ -117,6 +117,46 @@ Page({
     }
   },
 
+  async syncFromErp() {
+    if (!this.data.networkStatus) {
+      wx.showToast({
+        title: '当前无网络，请检查网络连接',
+        icon: 'none'
+      })
+      return
+    }
+
+    wx.showLoading({
+      title: '从ERP同步中...',
+      mask: true
+    })
+
+    try {
+      const result = await stockCheckApi.syncFromErp(app.globalData.shopId)
+      
+      if (result && result.tasks && result.tasks.length > 0) {
+        for (const task of result.tasks) {
+          await stockCheckDB.saveTask(task)
+        }
+        await this.loadLocalTasks()
+      }
+
+      wx.hideLoading()
+      wx.showToast({
+        title: `ERP同步成功${result.count > 0 ? '，新增' + result.count + '个任务' : ''}`,
+        icon: 'success'
+      })
+    } catch (err) {
+      console.error('ERP同步失败', err)
+      wx.hideLoading()
+      wx.showModal({
+        title: '同步失败',
+        content: err.message || '从ERP同步任务失败，请稍后重试',
+        showCancel: false
+      })
+    }
+  },
+
   async downloadTask(e) {
     const taskId = e.currentTarget.dataset.id
     const task = this.data.tasks.find(t => t.id === taskId)

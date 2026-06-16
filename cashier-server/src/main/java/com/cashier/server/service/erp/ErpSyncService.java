@@ -62,4 +62,14 @@ public interface ErpSyncService {
     MemberCard syncOrUpdateMemberCard(Map<String, Object> cardData);
 
     boolean pushDailyReportToErp(DailyReport dailyReport);
+
+    void syncStockCheckTasksFromErp();
+
+    List<Map<String, Object>> pullStockCheckTasksFromErp(Long shopId);
+
+    boolean pullStockCheckTaskFromErp(String erpTaskId);
+
+    boolean pushStockCheckResultToErp(Long taskId);
+
+    boolean pushStockCheckDiffToErp(Long diffId);
 }

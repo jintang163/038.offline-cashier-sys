@@ -5,6 +5,7 @@ import com.cashier.server.entity.member.Member;
 import com.cashier.server.entity.member.MemberCard;
 import com.cashier.server.entity.member.MemberCardRecord;
 import com.cashier.server.entity.member.PointRecord;
+import com.cashier.server.entity.order.DailyReport;
 import com.cashier.server.entity.order.Order;
 import com.cashier.server.entity.order.SalesSummary;
 import com.cashier.server.entity.product.Product;
@@ -14,10 +15,12 @@ import com.cashier.server.service.member.MemberService;
 import com.cashier.server.service.order.OrderService;
 import com.cashier.server.service.product.ProductCategoryService;
 import com.cashier.server.service.product.ProductService;
+import com.cashier.server.service.stock.StockCheckTaskService;
 import com.cashier.server.websocket.WebSocketService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -53,6 +56,10 @@ public class ErpSyncServiceImpl implements ErpSyncService {
 
     @Autowired
     private MemberCardService memberCardService;
+
+    @Autowired
+    @Lazy
+    private StockCheckTaskService stockCheckTaskService;
 
     @Override
     @Scheduled(cron = "0 0/30 * * * ?")
@@ -670,6 +677,117 @@ public class ErpSyncServiceImpl implements ErpSyncService {
         } catch (Exception e) {
             log.error("推送营业日报到ERP失败: reportNo={}, error={}", dailyReport.getReportNo(), e.getMessage());
             throw new BusinessException("推送营业日报到ERP失败: " + e.getMessage());
+        }
+    }
+
+    @Override
+    @Scheduled(cron = "0 0/15 * * * ?")
+    public void syncStockCheckTasksFromErp() {
+        log.info("开始定时同步盘点任务从ERP...");
+        try {
+            List<Map<String, Object>> taskList = pullStockCheckTasksFromErp(null);
+            if (taskList != null && !taskList.isEmpty()) {
+                int syncCount = 0;
+                for (Map<String, Object> taskData : taskList) {
+                    String erpTaskId = taskData.get("erpTaskId") != null ? taskData.get("erpTaskId").toString() : null;
+                    if (erpTaskId != null) {
+                        boolean success = stockCheckTaskService.syncOrUpdateTaskFromErp(taskData);
+                        if (success) {
+                            syncCount++;
+                        }
+                    }
+                }
+                log.info("盘点任务同步完成, 数量: {}", syncCount);
+            } else {
+                log.info("未获取到需要同步的盘点任务");
+            }
+        } catch (Exception e) {
+            log.error("盘点任务同步失败", e);
+        }
+    }
+
+    @Override
+    public List<Map<String, Object>> pullStockCheckTasksFromErp(Long shopId) {
+        log.info("从ERP拉取盘点任务列表...");
+        try {
+            String lastSyncTime = null;
+            List<Map<String, Object>> tasks = erpApiClient.getStockCheckTasks(shopId, lastSyncTime);
+            log.info("从ERP拉取盘点任务列表成功, 数量: {}", tasks != null ? tasks.size() : 0);
+            return tasks;
+        } catch (Exception e) {
+            log.error("从ERP拉取盘点任务列表失败", e);
+            throw new BusinessException("从ERP拉取盘点任务列表失败: " + e.getMessage());
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean pullStockCheckTaskFromErp(String erpTaskId) {
+        log.info("从ERP拉取盘点任务详情, erpTaskId={}", erpTaskId);
+        try {
+            Map<String, Object> taskDetail = erpApiClient.getStockCheckTaskDetail(erpTaskId);
+            List<Map<String, Object>> items = erpApiClient.getStockCheckItems(erpTaskId);
+            
+            boolean success = stockCheckTaskService.syncOrUpdateTaskFromErp(taskDetail);
+            if (success && items != null && !items.isEmpty()) {
+                stockCheckTaskService.syncTaskItemsFromErp(erpTaskId, items);
+            }
+            
+            log.info("从ERP拉取盘点任务详情成功, erpTaskId={}, 商品数={}", erpTaskId, items != null ? items.size() : 0);
+            return success;
+        } catch (Exception e) {
+            log.error("从ERP拉取盘点任务详情失败, erpTaskId={}", erpTaskId, e);
+            throw new BusinessException("从ERP拉取盘点任务详情失败: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public boolean pushStockCheckResultToErp(Long taskId) {
+        log.info("推送盘点结果到ERP, taskId={}", taskId);
+        try {
+            Map<String, Object> result = stockCheckTaskService.buildErpCheckResult(taskId);
+            if (result == null) {
+                log.warn("盘点结果为空, 跳过推送, taskId={}", taskId);
+                return false;
+            }
+            Map<String, Object> response = erpApiClient.pushStockCheckResult(result);
+            Integer code = response.get("code") != null ? Integer.valueOf(response.get("code").toString()) : null;
+            if (code != null && code == 200) {
+                log.info("推送盘点结果到ERP成功, taskId={}", taskId);
+                return true;
+            } else {
+                String message = response.get("message") != null ? response.get("message").toString() : "未知错误";
+                log.warn("推送盘点结果到ERP返回失败, taskId={}, code={}, message={}", taskId, code, message);
+                return false;
+            }
+        } catch (Exception e) {
+            log.error("推送盘点结果到ERP失败, taskId={}", taskId, e);
+            throw new BusinessException("推送盘点结果到ERP失败: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public boolean pushStockCheckDiffToErp(Long diffId) {
+        log.info("推送盘点差异到ERP, diffId={}", diffId);
+        try {
+            Map<String, Object> diffData = stockCheckTaskService.buildErpDiffData(diffId);
+            if (diffData == null) {
+                log.warn("盘点差异数据为空, 跳过推送, diffId={}", diffId);
+                return false;
+            }
+            Map<String, Object> response = erpApiClient.pushStockCheckDiff(diffData);
+            Integer code = response.get("code") != null ? Integer.valueOf(response.get("code").toString()) : null;
+            if (code != null && code == 200) {
+                log.info("推送盘点差异到ERP成功, diffId={}", diffId);
+                return true;
+            } else {
+                String message = response.get("message") != null ? response.get("message").toString() : "未知错误";
+                log.warn("推送盘点差异到ERP返回失败, diffId={}, code={}, message={}", diffId, code, message);
+                return false;
+            }
+        } catch (Exception e) {
+            log.error("推送盘点差异到ERP失败, diffId={}", diffId, e);
+            throw new BusinessException("推送盘点差异到ERP失败: " + e.getMessage());
         }
     }
 }

@@ -603,4 +603,281 @@ public class StockCheckTaskServiceImpl extends ServiceImpl<StockCheckTaskMapper,
     private String generateDiffNo() {
         return "DF" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
     }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean syncOrUpdateTaskFromErp(Map<String, Object> taskData) {
+        String erpTaskId = taskData.get("erpTaskId") != null ? taskData.get("erpTaskId").toString() : null;
+        if (erpTaskId == null) {
+            log.warn("ERP任务ID为空，跳过同步");
+            return false;
+        }
+
+        StockCheckTask existTask = lambdaQuery()
+                .eq(StockCheckTask::getErpTaskId, erpTaskId)
+                .one();
+
+        StockCheckTask task = existTask != null ? existTask : new StockCheckTask();
+
+        if (taskData.get("taskNo") != null) {
+            task.setTaskNo(taskData.get("taskNo").toString());
+        }
+        if (taskData.get("taskName") != null) {
+            task.setTaskName(taskData.get("taskName").toString());
+        }
+        if (taskData.get("taskType") != null) {
+            task.setTaskType(Integer.valueOf(taskData.get("taskType").toString()));
+        }
+        if (taskData.get("checkMode") != null) {
+            task.setCheckMode(Integer.valueOf(taskData.get("checkMode").toString()));
+        }
+        if (taskData.get("shopId") != null) {
+            task.setShopId(Long.valueOf(taskData.get("shopId").toString()));
+        }
+        if (taskData.get("shopName") != null) {
+            task.setShopName(taskData.get("shopName").toString());
+        }
+        if (taskData.get("categoryId") != null) {
+            task.setCategoryId(Long.valueOf(taskData.get("categoryId").toString()));
+        }
+        if (taskData.get("categoryName") != null) {
+            task.setCategoryName(taskData.get("categoryName").toString());
+        }
+        if (taskData.get("planStartTime") != null) {
+            task.setPlanStartTime(LocalDateTime.parse(taskData.get("planStartTime").toString()));
+        }
+        if (taskData.get("planEndTime") != null) {
+            task.setPlanEndTime(LocalDateTime.parse(taskData.get("planEndTime").toString()));
+        }
+        if (taskData.get("taskStatus") != null) {
+            task.setTaskStatus(Integer.valueOf(taskData.get("taskStatus").toString()));
+        }
+        if (taskData.get("remark") != null) {
+            task.setRemark(taskData.get("remark").toString());
+        }
+
+        if (existTask == null) {
+            task.setErpTaskId(erpTaskId);
+            task.setSyncStatus(0);
+            save(task);
+            log.info("从ERP创建盘点任务成功，erpTaskId={}, taskId={}", erpTaskId, task.getId());
+        } else {
+            updateById(task);
+            log.info("从ERP更新盘点任务成功，erpTaskId={}, taskId={}", erpTaskId, task.getId());
+        }
+
+        return true;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean syncTaskItemsFromErp(String erpTaskId, List<Map<String, Object>> items) {
+        StockCheckTask task = lambdaQuery()
+                .eq(StockCheckTask::getErpTaskId, erpTaskId)
+                .one();
+        if (task == null) {
+            log.warn("盘点任务不存在，erpTaskId={}", erpTaskId);
+            return false;
+        }
+
+        stockCheckItemMapper.delete(new LambdaQueryWrapper<StockCheckItem>()
+                .eq(StockCheckItem::getTaskId, task.getId()));
+
+        if (items != null && !items.isEmpty()) {
+            for (Map<String, Object> itemData : items) {
+                StockCheckItem item = new StockCheckItem();
+                item.setTaskId(task.getId());
+                item.setTaskNo(task.getTaskNo());
+
+                if (itemData.get("erpGoodsId") != null) {
+                    item.setErpGoodsId(itemData.get("erpGoodsId").toString());
+                }
+                if (itemData.get("productId") != null) {
+                    item.setProductId(Long.valueOf(itemData.get("productId").toString()));
+                }
+                if (itemData.get("productName") != null) {
+                    item.setProductName(itemData.get("productName").toString());
+                }
+                if (itemData.get("categoryName") != null) {
+                    item.setCategoryName(itemData.get("categoryName").toString());
+                }
+                if (itemData.get("barcode") != null) {
+                    item.setBarcode(itemData.get("barcode").toString());
+                }
+                if (itemData.get("unit") != null) {
+                    item.setUnit(itemData.get("unit").toString());
+                }
+                if (itemData.get("price") != null) {
+                    item.setPrice(new BigDecimal(itemData.get("price").toString()));
+                }
+                if (itemData.get("theoreticalStock") != null) {
+                    item.setTheoreticalStock(Integer.valueOf(itemData.get("theoreticalStock").toString()));
+                } else {
+                    item.setTheoreticalStock(0);
+                }
+
+                item.setActualStock(null);
+                item.setDiffQuantity(null);
+                item.setDiffAmount(null);
+                item.setCheckStatus(0);
+
+                stockCheckItemMapper.insert(item);
+            }
+        }
+
+        log.info("从ERP同步盘点任务明细成功，erpTaskId={}, itemCount={}", erpTaskId, items != null ? items.size() : 0);
+        return true;
+    }
+
+    @Override
+    public Map<String, Object> buildErpCheckResult(Long taskId) {
+        StockCheckTask task = getById(taskId);
+        if (task == null) {
+            return null;
+        }
+
+        List<StockCheckItem> items = stockCheckItemMapper.selectList(
+                new LambdaQueryWrapper<StockCheckItem>().eq(StockCheckItem::getTaskId, taskId));
+
+        List<Map<String, Object>> itemList = new ArrayList<>();
+        for (StockCheckItem item : items) {
+            Map<String, Object> itemMap = new HashMap<>();
+            itemMap.put("erpGoodsId", item.getErpGoodsId());
+            itemMap.put("productName", item.getProductName());
+            itemMap.put("theoreticalStock", item.getTheoreticalStock());
+            itemMap.put("actualStock", item.getActualStock());
+            itemMap.put("checkStatus", item.getCheckStatus());
+            itemList.add(itemMap);
+        }
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("erpTaskId", task.getErpTaskId());
+        result.put("taskNo", task.getTaskNo());
+        result.put("taskName", task.getTaskName());
+        result.put("shopId", task.getShopId());
+        result.put("shopName", task.getShopName());
+        result.put("operatorId", task.getOperatorId());
+        result.put("operatorName", task.getOperatorName());
+        result.put("actualStartTime", task.getActualStartTime());
+        result.put("actualEndTime", task.getActualEndTime());
+        result.put("items", itemList);
+
+        return result;
+    }
+
+    @Override
+    public Map<String, Object> buildErpDiffData(Long diffId) {
+        StockCheckDiff diff = stockCheckDiffMapper.selectById(diffId);
+        if (diff == null) {
+            return null;
+        }
+
+        StockCheckTask task = getById(diff.getTaskId());
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("erpTaskId", task != null ? task.getErpTaskId() : null);
+        result.put("diffNo", diff.getDiffNo());
+        result.put("taskNo", diff.getTaskNo());
+        result.put("erpGoodsId", diff.getErpGoodsId());
+        result.put("productName", diff.getProductName());
+        result.put("categoryName", diff.getCategoryName());
+        result.put("unit", diff.getUnit());
+        result.put("price", diff.getPrice());
+        result.put("theoreticalStock", diff.getTheoreticalStock());
+        result.put("actualStock", diff.getActualStock());
+        result.put("diffQuantity", diff.getDiffQuantity());
+        result.put("diffAmount", diff.getDiffAmount());
+        result.put("diffType", diff.getDiffType());
+        result.put("handleType", diff.getHandleType());
+        result.put("handleNo", diff.getHandleNo());
+        result.put("handleTime", diff.getHandleTime());
+        result.put("handleStatus", diff.getHandleStatus());
+        result.put("operatorName", diff.getOperatorName());
+        result.put("remark", diff.getRemark());
+
+        return result;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Map<String, Object> completeCheckProcess(Long taskId) {
+        log.info("开始执行盘点完整处理流程，taskId={}", taskId);
+        Map<String, Object> result = new HashMap<>();
+        result.put("taskId", taskId);
+
+        try {
+            log.info("步骤1/4: 完成盘点任务");
+            finishTask(taskId);
+            result.put("finishTask", true);
+
+            log.info("步骤2/4: 计算盘点差异");
+            calculateDiff(taskId);
+            result.put("calculateDiff", true);
+
+            List<StockCheckDiff> diffList = stockCheckDiffMapper.selectList(
+                    new LambdaQueryWrapper<StockCheckDiff>().eq(StockCheckDiff::getTaskId, taskId));
+            result.put("diffCount", diffList.size());
+
+            if (!diffList.isEmpty()) {
+                log.info("步骤3/4: 生成报损单/库存调整单，共{}条差异", diffList.size());
+                int lossReportCount = 0;
+                int stockAdjustCount = 0;
+                for (StockCheckDiff diff : diffList) {
+                    Integer handleType = diff.getDiffType() == DIFF_TYPE_LOSS
+                            ? HANDLE_TYPE_LOSS_REPORT
+                            : HANDLE_TYPE_STOCK_ADJUST;
+                    generateStockAdjust(diff.getId(), handleType);
+                    if (handleType == HANDLE_TYPE_LOSS_REPORT) {
+                        lossReportCount++;
+                    } else {
+                        stockAdjustCount++;
+                    }
+                }
+                result.put("lossReportCount", lossReportCount);
+                result.put("stockAdjustCount", stockAdjustCount);
+
+                log.info("步骤4/4: 同步盘点结果和差异到ERP");
+                try {
+                    boolean syncResult = syncTaskToErp(taskId);
+                    result.put("syncTaskToErp", syncResult);
+                } catch (Exception e) {
+                    log.warn("同步盘点任务到ERP失败，taskId={}, error={}", taskId, e.getMessage());
+                    result.put("syncTaskToErp", false);
+                    result.put("syncTaskError", e.getMessage());
+                }
+
+                try {
+                    int syncedDiffCount = 0;
+                    for (StockCheckDiff diff : diffList) {
+                        try {
+                            syncDiffToErp(diff.getId());
+                            syncedDiffCount++;
+                        } catch (Exception e) {
+                            log.warn("同步差异到ERP失败，diffId={}, error={}", diff.getId(), e.getMessage());
+                        }
+                    }
+                    result.put("syncedDiffCount", syncedDiffCount);
+                } catch (Exception e) {
+                    log.warn("同步差异到ERP异常，taskId={}, error={}", taskId, e.getMessage());
+                    result.put("syncedDiffCount", 0);
+                }
+            } else {
+                log.info("无差异数据，跳过单据生成和ERP同步");
+                result.put("generateDocuments", false);
+                result.put("syncToErp", false);
+            }
+
+            result.put("success", true);
+            result.put("message", "盘点处理完成");
+            log.info("盘点完整处理流程执行完成，taskId={}", taskId);
+
+        } catch (Exception e) {
+            log.error("盘点完整处理流程执行失败，taskId={}", taskId, e);
+            result.put("success", false);
+            result.put("message", "处理失败: " + e.getMessage());
+            throw new BusinessException("盘点处理失败: " + e.getMessage());
+        }
+
+        return result;
+    }
 }

@@ -4,9 +4,15 @@
       <text class="iconfont">{{networkStatus ? '📡' : '📵'}}</text>
       <text>{{networkStatus ? '在线' : '离线'}}</text>
     </view>
-    <view class="sync-btn" bindtap="loadTasks">
-      <text class="iconfont">🔄</text>
-      <text>{{loading ? '同步中...' : '同步任务'}}</text>
+    <view class="header-btns">
+      <view class="sync-btn erp-btn" bindtap="syncFromErp">
+        <text class="iconfont">🏭</text>
+        <text>ERP同步</text>
+      </view>
+      <view class="sync-btn" bindtap="loadTasks">
+        <text class="iconfont">🔄</text>
+        <text>{{loading ? '同步中...' : '同步任务'}}</text>
+      </view>
     </view>
   </view>
 

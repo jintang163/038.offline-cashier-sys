@@ -43,6 +43,15 @@
   margin-right: 8rpx;
 }
 
+.header-btns {
+  display: flex;
+  gap: 20rpx;
+}
+
+.erp-btn {
+  color: #722ed1;
+}
+
 .task-list {
   display: flex;
   flex-direction: column;

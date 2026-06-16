@@ -6,6 +6,7 @@ import com.cashier.server.common.Result;
 import com.cashier.server.dto.stock.StockCheckTaskDTO;
 import com.cashier.server.dto.stock.StockCheckUploadDTO;
 import com.cashier.server.entity.stock.StockCheckTask;
+import com.cashier.server.service.erp.ErpSyncService;
 import com.cashier.server.service.stock.StockCheckTaskService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -23,6 +24,9 @@ public class StockCheckTaskController {
 
     @Autowired
     private StockCheckTaskService stockCheckTaskService;
+
+    @Autowired
+    private ErpSyncService erpSyncService;
 
     @PostMapping
     public Result<StockCheckTask> create(@RequestBody StockCheckTaskDTO dto) {
@@ -239,6 +243,52 @@ public class StockCheckTaskController {
         } catch (Exception e) {
             log.error("同步盘点差异到ERP系统异常，diffId={}", diffId, e);
             return Result.fail("同步盘点差异到ERP失败: " + e.getMessage());
+        }
+    }
+
+    @PostMapping("/sync-from-erp")
+    public Result<Map<String, Object>> syncFromErp(
+            @RequestParam(required = false) Long shopId) {
+        log.info("从ERP同步盘点任务，shopId={}", shopId);
+        try {
+            List<Map<String, Object>> taskList = erpSyncService.pullStockCheckTasksFromErp(shopId);
+            return Result.success(Map.of("success", true, "count", taskList != null ? taskList.size() : 0, "tasks", taskList));
+        } catch (BusinessException e) {
+            log.error("从ERP同步盘点任务失败，shopId={}", shopId, e);
+            return Result.fail(e.getMessage());
+        } catch (Exception e) {
+            log.error("从ERP同步盘点任务系统异常，shopId={}", shopId, e);
+            return Result.fail("从ERP同步盘点任务失败: " + e.getMessage());
+        }
+    }
+
+    @PostMapping("/{erpTaskId}/pull-from-erp")
+    public Result<Map<String, Object>> pullTaskFromErp(@PathVariable String erpTaskId) {
+        log.info("从ERP拉取盘点任务详情，erpTaskId={}", erpTaskId);
+        try {
+            boolean success = erpSyncService.pullStockCheckTaskFromErp(erpTaskId);
+            return Result.success(Map.of("success", success));
+        } catch (BusinessException e) {
+            log.error("从ERP拉取盘点任务详情失败，erpTaskId={}", erpTaskId, e);
+            return Result.fail(e.getMessage());
+        } catch (Exception e) {
+            log.error("从ERP拉取盘点任务详情系统异常，erpTaskId={}", erpTaskId, e);
+            return Result.fail("从ERP拉取盘点任务详情失败: " + e.getMessage());
+        }
+    }
+
+    @PostMapping("/{id}/complete-process")
+    public Result<Map<String, Object>> completeProcess(@PathVariable Long id) {
+        log.info("执行盘点完整处理流程，taskId={}", id);
+        try {
+            Map<String, Object> result = stockCheckTaskService.completeCheckProcess(id);
+            return Result.success(result);
+        } catch (BusinessException e) {
+            log.error("执行盘点完整处理流程失败，taskId={}", id, e);
+            return Result.fail(e.getMessage());
+        } catch (Exception e) {
+            log.error("执行盘点完整处理流程系统异常，taskId={}", id, e);
+            return Result.fail("处理失败: " + e.getMessage());
         }
     }
 }

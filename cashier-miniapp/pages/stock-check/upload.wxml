@@ -27,13 +27,22 @@
     </view>
   </view>
 
-  <view class="progress-section" wx:if="{{uploading || uploadComplete}}">
+  <view class="progress-section" wx:if="{{processing || uploadComplete}}">
     <view class="progress-header">
-      <text class="progress-title">{{uploadComplete ? '上传完成' : '上传进度'}}</text>
-      <text class="progress-text">{{uploadProgress}}%</text>
+      <text class="progress-title">{{uploadComplete ? '处理完成' : '处理进度'}}</text>
     </view>
-    <view class="progress-bar">
-      <view class="progress-fill {{uploadComplete ? 'complete' : ''}}" style="width: {{uploadProgress}}%;"></view>
+    <view class="step-list">
+      <view class="step-item {{processStep > index ? 'done' : ''}} {{processStep === index + 1 ? 'current' : ''}}" 
+            wx:for="{{processSteps}}" 
+            wx:key="*this"
+            wx:for-index="index">
+        <view class="step-icon">
+          <text wx:if="{{processStep > index}}">✓</text>
+          <text wx:elif="{{processStep === index + 1}}">{{index + 1}}</text>
+          <text wx:else>{{index + 1}}</text>
+        </view>
+        <view class="step-text">{{item}}</view>
+      </view>
     </view>
   </view>
 
@@ -88,21 +97,17 @@
   <view class="bottom-bar">
     <button class="btn-back" bindtap="goBack">返回</button>
     <button 
-      class="btn-upload {{uploading || uploadComplete ? 'disabled' : ''}}" 
+      class="btn-upload {{uploading || processing || uploadComplete ? 'disabled' : ''}}" 
       bindtap="uploadData"
-      disabled="{{uploading || uploadComplete}}"
+      disabled="{{uploading || processing || uploadComplete}}"
     >
-      <text wx:if="{{!uploading && !uploadComplete}}">⬆️ 上传数据</text>
-      <text wx:elif="{{uploading}}">上传中...</text>
-      <text wx:else>✅ 已上传</text>
+      <text wx:if="{{!uploading && !processing && !uploadComplete}}">🚀 一键完成</text>
+      <text wx:elif="{{uploading || processing}}">处理中...</text>
+      <text wx:else>✅ 已完成</text>
     </button>
   </view>
 
-  <view class="action-bar" wx:if="{{uploadComplete && task.task_status === 3}}">
-    <button class="btn-secondary" bindtap="calculateDiff">
-      <text>📊</text>
-      <text>计算差异</text>
-    </button>
+  <view class="action-bar" wx:if="{{uploadComplete}}">
     <button class="btn-secondary" bindtap="goToTaskList">
       <text>📋</text>
       <text>返回列表</text>

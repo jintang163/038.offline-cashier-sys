@@ -13,6 +13,16 @@ Page({
     uploadProgress: 0,
     uploading: false,
     uploadComplete: false,
+    processing: false,
+    processStep: 0,
+    processSteps: [
+      '上传盘点数据',
+      '完成盘点任务',
+      '计算盘点差异',
+      '生成报损/调整单',
+      '同步至ERP系统'
+    ],
+    processResult: null,
     networkStatus: true,
     taskStatusMap: {
       0: '草稿',
@@ -86,21 +96,23 @@ Page({
     }
 
     wx.showModal({
-      title: '确认上传',
-      content: `将上传 ${this.data.unsyncedItems.length} 条盘点数据和 ${this.data.unsyncedRecords.length} 条扫码记录，是否继续？`,
-      confirmText: '确认上传',
+      title: '确认上传并完成盘点',
+      content: `将上传 ${this.data.unsyncedItems.length} 条盘点数据和 ${this.data.unsyncedRecords.length} 条扫码记录。\n\n上传完成后系统将自动：\n1. 完成盘点任务\n2. 计算盘点差异\n3. 生成报损/调整单\n4. 同步至ERP系统\n\n是否继续？`,
+      confirmText: '一键完成',
       cancelText: '取消',
       success: (res) => {
         if (res.confirm) {
-          this.doUpload()
+          this.doCompleteProcess()
         }
       }
     })
   },
 
-  async doUpload() {
+  async doCompleteProcess() {
     this.setData({
       uploading: true,
+      processing: true,
+      processStep: 0,
       uploadProgress: 0
     })
 
@@ -138,58 +150,46 @@ Page({
         operatorName: app.globalData.userName || '库管员'
       }
 
-      this.setData({ uploadProgress: 30 })
+      this.setData({ processStep: 1 })
       wx.showLoading({
-        title: '上传中...',
+        title: '上传数据中...',
         mask: true
       })
 
       await stockCheckApi.uploadCheckData(uploadData)
 
-      this.setData({ uploadProgress: 70 })
+      await stockCheckDB.markRecordsSynced(this.data.taskId)
+
+      this.setData({ processStep: 2 })
       wx.showLoading({
-        title: '同步本地状态...',
+        title: '计算差异中...',
         mask: true
       })
 
-      await stockCheckDB.markRecordsSynced(this.data.taskId)
-
-      this.setData({ uploadProgress: 90 })
-
-      if (this.data.task && this.data.task.task_status !== 3) {
-        try {
-          const checkedItems = items.filter(item => item.checkStatus === 1)
-          const totalItems = this.data.task.items ? this.data.task.items.length : 0
-          
-          if (checkedItems.length >= totalItems * 0.9) {
-            await stockCheckApi.finishTask(this.data.taskId)
-            await stockCheckDB.updateTaskStatus(
-              this.data.taskId,
-              3,
-              null,
-              new Date().toISOString()
-            )
-          } else {
-            await stockCheckDB.updateTaskStatus(this.data.taskId, 2)
-          }
-        } catch (err) {
-          console.warn('更新任务状态失败', err)
-        }
-      }
+      const result = await stockCheckApi.completeProcess(this.data.taskId)
 
       this.setData({
-        uploadProgress: 100,
+        processStep: 5,
         uploadComplete: true,
         uploading: false,
+        processing: false,
+        processResult: result,
         unsyncedItems: [],
         unsyncedRecords: []
       })
 
+      await stockCheckDB.updateTaskStatus(this.data.taskId, 3, null, new Date().toISOString())
+
       wx.hideLoading()
 
+      const diffCount = result.diffCount || 0
+      const lossCount = result.lossReportCount || 0
+      const adjustCount = result.stockAdjustCount || 0
+      const erpSyncSuccess = result.syncTaskToErp ? '成功' : '失败'
+
       wx.showModal({
-        title: '上传成功',
-        content: `成功上传 ${items.length} 条盘点数据和 ${records.length} 条扫码记录`,
+        title: '盘点完成',
+        content: `盘点处理已完成！\n\n差异商品数：${diffCount}\n生成报损单：${lossCount}张\n生成调整单：${adjustCount}张\nERP同步：${erpSyncSuccess}`,
         showCancel: false,
         confirmText: '确定',
         success: () => {
@@ -198,14 +198,15 @@ Page({
       })
 
     } catch (err) {
-      console.error('上传失败', err)
+      console.error('处理失败', err)
       this.setData({
         uploading: false,
+        processing: false,
         uploadProgress: 0
       })
       wx.hideLoading()
       wx.showModal({
-        title: '上传失败',
+        title: '处理失败',
         content: err.message || '网络异常，请稍后重试',
         showCancel: false,
         confirmText: '确定'

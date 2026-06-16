@@ -41,6 +41,20 @@ function syncToErp(taskId) {
   return request.post(`/api/stock/check/task/${taskId}/sync-erp`)
 }
 
+function syncFromErp(shopId) {
+  return request.post('/api/stock/check/task/sync-from-erp', {
+    shopId
+  })
+}
+
+function pullTaskFromErp(erpTaskId) {
+  return request.post(`/api/stock/check/task/${erpTaskId}/pull-from-erp`)
+}
+
+function completeProcess(taskId) {
+  return request.post(`/api/stock/check/task/${taskId}/complete-process`)
+}
+
 module.exports = {
   getTaskList,
   downloadTask,
@@ -49,5 +63,8 @@ module.exports = {
   finishTask,
   getItemByBarcode,
   calculateDiff,
-  syncToErp
+  syncToErp,
+  syncFromErp,
+  pullTaskFromErp,
+  completeProcess
 }

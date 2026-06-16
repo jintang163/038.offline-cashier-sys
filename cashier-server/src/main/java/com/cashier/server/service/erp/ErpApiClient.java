@@ -171,6 +171,75 @@ public class ErpApiClient {
         return response;
     }
 
+    public List<Map<String, Object>> getStockCheckTasks(Long shopId, String lastSyncTime) {
+        log.info("开始调用ERP接口获取盘点任务列表, shopId={}, lastSyncTime={}", shopId, lastSyncTime);
+        Map<String, Object> requestData = new HashMap<>();
+        if (shopId != null) {
+            requestData.put("shopId", shopId);
+        }
+        if (lastSyncTime != null) {
+            requestData.put("lastSyncTime", lastSyncTime);
+        }
+        Map<String, Object> response = executeWithRetry("/stock/check/task/list", requestData, HttpMethod.POST);
+        Object data = response.get("data");
+        if (data == null) {
+            return new ArrayList<>();
+        }
+        return JSON.parseArray(JSON.toJSONString(data), Map.class);
+    }
+
+    public Map<String, Object> getStockCheckTaskDetail(String erpTaskId) {
+        log.info("开始调用ERP接口获取盘点任务详情, erpTaskId={}", erpTaskId);
+        Map<String, Object> requestData = new HashMap<>();
+        requestData.put("erpTaskId", erpTaskId);
+        Map<String, Object> response = executeWithRetry("/stock/check/task/detail", requestData, HttpMethod.POST);
+        Object data = response.get("data");
+        if (data == null) {
+            throw new BusinessException("ERP返回盘点任务详情为空");
+        }
+        return JSON.parseObject(JSON.toJSONString(data), Map.class);
+    }
+
+    public List<Map<String, Object>> getStockCheckItems(String erpTaskId) {
+        log.info("开始调用ERP接口获取盘点商品明细, erpTaskId={}", erpTaskId);
+        Map<String, Object> requestData = new HashMap<>();
+        requestData.put("erpTaskId", erpTaskId);
+        Map<String, Object> response = executeWithRetry("/stock/check/item/list", requestData, HttpMethod.POST);
+        Object data = response.get("data");
+        if (data == null) {
+            throw new BusinessException("ERP返回盘点商品明细为空");
+        }
+        return JSON.parseArray(JSON.toJSONString(data), Map.class);
+    }
+
+    public Map<String, Object> pushStockCheckResult(Map<String, Object> checkResult) {
+        log.info("开始调用ERP接口推送盘点结果, erpTaskId={}", checkResult.get("erpTaskId"));
+        Map<String, Object> response = executeWithRetry("/stock/check/result/push", checkResult, HttpMethod.POST);
+        log.info("ERP盘点结果推送成功, erpTaskId={}", checkResult.get("erpTaskId"));
+        return response;
+    }
+
+    public Map<String, Object> pushStockCheckDiff(Map<String, Object> diffData) {
+        log.info("开始调用ERP接口推送盘点差异, erpTaskId={}", diffData.get("erpTaskId"));
+        Map<String, Object> response = executeWithRetry("/stock/check/diff/push", diffData, HttpMethod.POST);
+        log.info("ERP盘点差异推送成功, erpTaskId={}", diffData.get("erpTaskId"));
+        return response;
+    }
+
+    public Map<String, Object> pushLossReport(Map<String, Object> lossReport) {
+        log.info("开始调用ERP接口推送报损单, lossReportNo={}", lossReport.get("lossReportNo"));
+        Map<String, Object> response = executeWithRetry("/stock/loss-report/push", lossReport, HttpMethod.POST);
+        log.info("ERP报损单推送成功, lossReportNo={}", lossReport.get("lossReportNo"));
+        return response;
+    }
+
+    public Map<String, Object> pushStockAdjust(Map<String, Object> stockAdjust) {
+        log.info("开始调用ERP接口推送库存调整单, adjustNo={}", stockAdjust.get("adjustNo"));
+        Map<String, Object> response = executeWithRetry("/stock/adjust/push", stockAdjust, HttpMethod.POST);
+        log.info("ERP库存调整单推送成功, adjustNo={}", stockAdjust.get("adjustNo"));
+        return response;
+    }
+
     public Map<String, Object> executeWithRetry(String path, Map<String, Object> data, HttpMethod method) {
         int retryTimes = erpApiProperties.getRetryTimes();
         int retryInterval = erpApiProperties.getRetryInterval();
