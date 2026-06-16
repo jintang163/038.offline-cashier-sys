@@ -1,6 +1,7 @@
 import db from '../db/dexie'
 import api from '../api/request'
 import dailyReportService from './dailyReportService'
+import invoiceService from './invoiceService'
 
 class SyncService {
   constructor() {
@@ -539,6 +540,68 @@ class SyncService {
     }
   }
 
+  async syncInvoices() {
+    if (!navigator.onLine) {
+      throw new Error('OFFLINE')
+    }
+
+    this.emit('syncStart', { type: 'invoices' })
+    this.emit('statusChange', { type: 'invoices', status: 'syncing' })
+
+    try {
+      const result = await invoiceService.syncInvoices()
+      const success = result.success === true || result.failed === 0
+
+      await db.setSetting('lastInvoiceSyncTime', new Date().toISOString())
+      await db.addSyncRecord('invoices', success ? 'success' : 'partial', result)
+
+      this.emit('syncComplete', { type: 'invoices', success, result })
+      this.emit('statusChange', {
+        type: 'invoices',
+        status: success ? 'success' : 'partial',
+        result,
+      })
+
+      return result
+    } catch (error) {
+      await db.addSyncRecord('invoices', 'failed', { error: error.message })
+      this.emit('syncComplete', { type: 'invoices', success: false, error: error.message })
+      this.emit('statusChange', { type: 'invoices', status: 'failed', error: error.message })
+      throw error
+    }
+  }
+
+  async syncInvoiceWallets() {
+    if (!navigator.onLine) {
+      throw new Error('OFFLINE')
+    }
+
+    this.emit('syncStart', { type: 'invoiceWallets' })
+    this.emit('statusChange', { type: 'invoiceWallets', status: 'syncing' })
+
+    try {
+      const result = await invoiceService.syncWallets()
+      const success = result.success === true || result.failed === 0
+
+      await db.setSetting('lastInvoiceWalletSyncTime', new Date().toISOString())
+      await db.addSyncRecord('invoiceWallets', success ? 'success' : 'partial', result)
+
+      this.emit('syncComplete', { type: 'invoiceWallets', success, result })
+      this.emit('statusChange', {
+        type: 'invoiceWallets',
+        status: success ? 'success' : 'partial',
+        result,
+      })
+
+      return result
+    } catch (error) {
+      await db.addSyncRecord('invoiceWallets', 'failed', { error: error.message })
+      this.emit('syncComplete', { type: 'invoiceWallets', success: false, error: error.message })
+      this.emit('statusChange', { type: 'invoiceWallets', status: 'failed', error: error.message })
+      throw error
+    }
+  }
+
   async fullSync() {
     if (this.syncing) {
       return { success: false, message: '正在同步中，请稍后再试' }
@@ -609,6 +672,20 @@ class SyncService {
         failed: 0,
       }))
 
+      const invoiceResult = await this.syncInvoices().catch((e) => ({
+        success: false,
+        error: e.message,
+        success: 0,
+        failed: 0,
+      }))
+
+      const invoiceWalletResult = await this.syncInvoiceWallets().catch((e) => ({
+        success: false,
+        error: e.message,
+        success: 0,
+        failed: 0,
+      }))
+
       return {
         success: true,
         products: productResult,
@@ -620,6 +697,8 @@ class SyncService {
         printerConfig: printerConfigResult,
         printHistory: printHistoryResult,
         dailyReports: dailyReportResult,
+        invoices: invoiceResult,
+        invoiceWallets: invoiceWalletResult,
       }
     } finally {
       this.syncing = false

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
-import { Input, Button, Modal, Radio, message, Empty, InputNumber, Alert, Tag, Card, Select, Tooltip, Badge, Table, Statistic, Row, Col } from 'antd'
-import { SearchOutlined, DeleteOutlined, PlusOutlined, MinusOutlined, WifiOutlined, UserOutlined, GiftOutlined, CrownOutlined, IdcardOutlined, CloseOutlined, CreditCardOutlined, FireOutlined, BulbOutlined, AlertOutlined, ShoppingOutlined } from '@ant-design/icons'
+import { Input, Button, Modal, Radio, message, Empty, InputNumber, Alert, Tag, Card, Select, Tooltip, Badge, Table, Statistic, Row, Col, Form, Tabs } from 'antd'
+import { SearchOutlined, DeleteOutlined, PlusOutlined, MinusOutlined, WifiOutlined, UserOutlined, GiftOutlined, CrownOutlined, IdcardOutlined, CloseOutlined, CreditCardOutlined, FireOutlined, BulbOutlined, AlertOutlined, ShoppingOutlined, FileTextOutlined } from '@ant-design/icons'
 import AppLayout from '../components/AppLayout'
 import db from '../utils/db'
 import { initMockData } from '../db/mockData'
@@ -10,6 +10,7 @@ import memberService from '../services/memberService'
 import kitchenPrintService from '../services/kitchenPrintService'
 import recommendService from '../services/intelligentRecommendService'
 import dailyReportService from '../services/dailyReportService'
+import invoiceService from '../services/invoiceService'
 import dayjs from 'dayjs'
 
 const { Option } = Select
@@ -44,6 +45,12 @@ function Cashier() {
   const [stockAlerts, setStockAlerts] = useState([])
   const [lowStockCount, setLowStockCount] = useState(0)
   const [timeRecLabel, setTimeRecLabel] = useState('热门推荐')
+
+  const [invoiceModalVisible, setInvoiceModalVisible] = useState(false)
+  const [currentOrderForInvoice, setCurrentOrderForInvoice] = useState(null)
+  const [currentInvoice, setCurrentInvoice] = useState(null)
+  const [invoiceGenerating, setInvoiceGenerating] = useState(false)
+  const [invoiceForm] = Form.useForm()
 
   useEffect(() => {
     initData()
@@ -547,6 +554,20 @@ function Cashier() {
         console.warn('检查并补全遗漏日报失败:', e)
       }
 
+      if (result && result.id) {
+        try {
+          const existingInvoice = await invoiceService.getInvoiceByOrderId(result.id)
+          if (!existingInvoice) {
+            setCurrentOrderForInvoice(result)
+            setCurrentInvoice(null)
+            invoiceForm.resetFields()
+            setInvoiceModalVisible(true)
+          }
+        } catch (e) {
+          console.warn('检查订单发票状态失败:', e)
+        }
+      }
+
       try {
         recommendService.invalidateCache()
         await Promise.all([
@@ -590,6 +611,67 @@ function Cashier() {
     const available = (c.balance || 0) - (c.reserved_balance || 0)
     return available > 0 || (c.credit_limit || 0) > 0
   })
+
+  const handleCreateInvoice = async (values) => {
+    if (!currentOrderForInvoice) return
+
+    setInvoiceGenerating(true)
+    try {
+      const invoiceParams = {
+        ...values,
+        cashier_id: 2,
+        cashier_name: '收银员',
+      }
+
+      const invoice = await invoiceService.createInvoiceFromOrder(
+        currentOrderForInvoice.id,
+        invoiceParams
+      )
+
+      setCurrentInvoice(invoice)
+      message.success('电子发票已生成！顾客可扫码存入票夹')
+
+      if (isOnline) {
+        try {
+          await syncService.syncInvoices()
+        } catch (e) {
+          console.warn('自动同步发票失败:', e)
+        }
+      }
+    } catch (error) {
+      console.error('生成电子发票失败:', error)
+      message.error('生成发票失败：' + error.message)
+    } finally {
+      setInvoiceGenerating(false)
+    }
+  }
+
+  const handleInvoiceCancel = () => {
+    setInvoiceModalVisible(false)
+    setCurrentOrderForInvoice(null)
+    setCurrentInvoice(null)
+  }
+
+  const getInvoiceStatusText = (status) => {
+    const statusMap = {
+      0: '待开具',
+      1: '开具中',
+      2: '已开具',
+      3: '已红冲',
+      4: '开具失败',
+    }
+    return statusMap[status] || '未知'
+  }
+
+  const getTaxControlStatusText = (status) => {
+    const statusMap = {
+      0: '未上传',
+      1: '上传中',
+      2: '上传成功',
+      3: '上传失败',
+    }
+    return statusMap[status] || '未知'
+  }
 
   return (
     <AppLayout>
@@ -1379,6 +1461,290 @@ function Cashier() {
               },
             ]}
           />
+        )}
+      </Modal>
+
+      <Modal
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <FileTextOutlined style={{ color: '#1890ff' }} />
+            开具电子发票
+            {!isOnline && (
+              <Tag color="warning" style={{ marginLeft: 8 }}>
+                <WifiOutlined /> 离线预生成
+              </Tag>
+            )}
+          </div>
+        }
+        open={invoiceModalVisible}
+        onCancel={handleInvoiceCancel}
+        footer={null}
+        width={560}
+        maskClosable={false}
+      >
+        {currentInvoice ? (
+          <div style={{ textAlign: 'center', padding: '20px 0' }}>
+            <div style={{ fontSize: 48, marginBottom: 16 }}>✅</div>
+            <div style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 8 }}>
+              电子发票已生成
+            </div>
+            <div style={{ color: '#666', marginBottom: 20 }}>
+              发票编号：{currentInvoice.invoice_no}
+            </div>
+
+            {currentInvoice.qrcode_image ? (
+              <div style={{ margin: '20px 0' }}>
+                <img
+                  src={currentInvoice.qrcode_image}
+                  alt="发票二维码"
+                  style={{ width: 200, height: 200, border: '1px solid #eee', padding: 10 }}
+                />
+                <div style={{ marginTop: 8, fontSize: 12, color: '#999' }}>
+                  顾客扫码后可将发票存入票夹
+                </div>
+              </div>
+            ) : (
+              <div style={{ margin: '20px 0', padding: 40, background: '#f5f5f5', borderRadius: 8 }}>
+                <div style={{ fontSize: 36, marginBottom: 8 }}>📱</div>
+                <div style={{ color: '#999' }}>二维码生成中...</div>
+              </div>
+            )}
+
+            <Row gutter={16} style={{ marginTop: 20, textAlign: 'left' }}>
+              <Col span={12}>
+                <Card size="small">
+                  <Statistic
+                    title="发票金额"
+                    value={currentInvoice.total_amount}
+                    prefix="¥"
+                    valueStyle={{ fontSize: 20 }}
+                  />
+                </Card>
+              </Col>
+              <Col span={12}>
+                <Card size="small">
+                  <Statistic
+                    title="发票状态"
+                    value={getInvoiceStatusText(currentInvoice.invoice_status)}
+                    valueStyle={{ fontSize: 16, color: currentInvoice.invoice_status === 2 ? '#52c41a' : '#fa8c16' }}
+                  />
+                </Card>
+              </Col>
+            </Row>
+
+            <Row gutter={16} style={{ marginTop: 12, textAlign: 'left' }}>
+              <Col span={12}>
+                <Card size="small">
+                  <Statistic
+                    title="税控状态"
+                    value={getTaxControlStatusText(currentInvoice.tax_control_status)}
+                    valueStyle={{ fontSize: 14, color: currentInvoice.tax_control_status === 2 ? '#52c41a' : '#fa8c16' }}
+                  />
+                </Card>
+              </Col>
+              <Col span={12}>
+                <Card size="small">
+                  <Statistic
+                    title="同步状态"
+                    value={currentInvoice.sync_status === 1 ? '已同步' : '未同步'}
+                    valueStyle={{ fontSize: 14, color: currentInvoice.sync_status === 1 ? '#52c41a' : '#fa8c16' }}
+                  />
+                </Card>
+              </Col>
+            </Row>
+
+            <div style={{ marginTop: 24, padding: 12, background: '#e6f7ff', borderRadius: 6, textAlign: 'left' }}>
+              <div style={{ color: '#1890ff', marginBottom: 4 }}>
+                <FileTextOutlined style={{ marginRight: 4 }} />
+                开票说明
+              </div>
+              <div style={{ fontSize: 12, color: '#666', lineHeight: 1.8 }}>
+                {isOnline ? (
+                  <>
+                    发票信息已上传至税控系统，正式发票将在1-3分钟内开具完成。
+                    <br />
+                    开具成功后将自动推送至顾客手机。
+                  </>
+                ) : (
+                  <>
+                    当前处于离线状态，发票已在本地预生成。
+                    <br />
+                    网络恢复后将自动上传至税控系统开具正式发票。
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div style={{ marginTop: 20 }}>
+              <Button type="primary" size="large" onClick={handleInvoiceCancel} style={{ width: 200 }}>
+                完成
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <Form
+            form={invoiceForm}
+            layout="vertical"
+            onFinish={handleCreateInvoice}
+            initialValues={{
+              invoice_title_type: 1,
+              invoice_type: 1,
+              tax_rate: 0.01,
+            }}
+          >
+            {currentOrderForInvoice && (
+              <div style={{ marginBottom: 20, padding: 16, background: '#f6ffed', borderRadius: 8, border: '1px solid #b7eb8f' }}>
+                <div style={{ fontWeight: 'bold', marginBottom: 8 }}>
+                  <ShoppingOutlined style={{ color: '#52c41a', marginRight: 4 }} />
+                  订单信息
+                </div>
+                <Row gutter={16}>
+                  <Col span={12}>
+                    <div style={{ fontSize: 12, color: '#666' }}>订单编号</div>
+                    <div style={{ fontWeight: 500 }}>{currentOrderForInvoice.order_no}</div>
+                  </Col>
+                  <Col span={12}>
+                    <div style={{ fontSize: 12, color: '#666' }}>订单金额</div>
+                    <div style={{ fontWeight: 500, color: '#ff4d4f', fontSize: 16 }}>
+                      ¥{currentOrderForInvoice.pay_amount || currentOrderForInvoice.total_amount}
+                    </div>
+                  </Col>
+                </Row>
+              </div>
+            )}
+
+            <Tabs
+              items={[
+                {
+                  key: '1',
+                  label: '个人/非企业',
+                },
+                {
+                  key: '2',
+                  label: '企业单位',
+                },
+              ]}
+              onChange={(key) => {
+                invoiceForm.setFieldsValue({
+                  invoice_title_type: parseInt(key),
+                  buyer_tax_no: key === '1' ? '' : undefined,
+                  buyer_address: key === '1' ? '' : undefined,
+                  buyer_bank: key === '1' ? '' : undefined,
+                })
+              }}
+            />
+
+            <Form.Item
+              name="invoice_title_type"
+              hidden
+            >
+              <Input type="hidden" />
+            </Form.Item>
+
+            <Form.Item
+              name="buyer_name"
+              label="发票抬头"
+              rules={[{ required: true, message: '请输入发票抬头' }]}
+              style={{ marginTop: 16 }}
+            >
+              <Input placeholder="请输入发票抬头名称" size="large" />
+            </Form.Item>
+
+            <Form.Item
+              name="buyer_phone"
+              label="接收手机号"
+              rules={[
+                { required: true, message: '请输入手机号' },
+                { pattern: /^1[3-9]\d{9}$/, message: '请输入正确的手机号' },
+              ]}
+              extra="用于接收电子发票推送通知"
+            >
+              <Input placeholder="请输入接收发票的手机号" size="large" maxLength={11} />
+            </Form.Item>
+
+            <Form.Item
+              name="buyer_email"
+              label="接收邮箱（选填）"
+              rules={[{ type: 'email', message: '请输入正确的邮箱地址' }]}
+              extra="可选，用于接收电子发票PDF文件"
+            >
+              <Input placeholder="请输入接收发票的邮箱" size="large" />
+            </Form.Item>
+
+            <Form.Item
+              noStyle
+              shouldUpdate={(prevValues, currentValues) => prevValues.invoice_title_type !== currentValues.invoice_title_type}
+            >
+              {({ getFieldValue }) => {
+                const type = getFieldValue('invoice_title_type')
+                if (type !== 2) return null
+
+                return (
+                  <>
+                    <Form.Item
+                      name="buyer_tax_no"
+                      label="纳税人识别号"
+                      rules={[{ required: true, message: '请输入纳税人识别号' }]}
+                    >
+                      <Input placeholder="请输入企业纳税人识别号" size="large" />
+                    </Form.Item>
+
+                    <Form.Item
+                      name="buyer_address"
+                      label="企业地址、电话（选填）"
+                    >
+                      <Input placeholder="请输入企业地址和电话" size="large" />
+                    </Form.Item>
+
+                    <Form.Item
+                      name="buyer_bank"
+                      label="开户行及账号（选填）"
+                    >
+                      <Input placeholder="请输入开户行及账号" size="large" />
+                    </Form.Item>
+                  </>
+                )
+              }}
+            </Form.Item>
+
+            <Form.Item
+              name="invoice_type"
+              label="发票类型"
+              rules={[{ required: true, message: '请选择发票类型' }]}
+            >
+              <Radio.Group size="large">
+                <Radio.Button value={1}>增值税普通发票</Radio.Button>
+                <Radio.Button value={2}>增值税专用发票</Radio.Button>
+              </Radio.Group>
+            </Form.Item>
+
+            <Form.Item
+              name="remark"
+              label="备注（选填）"
+            >
+              <Input.TextArea placeholder="请输入备注信息" rows={2} maxLength={100} showCount />
+            </Form.Item>
+
+            {!isOnline && (
+              <Alert
+                message="当前处于离线状态，发票将在本地预生成，网络恢复后自动上传至税控系统"
+                type="warning"
+                showIcon
+                style={{ marginBottom: 16 }}
+              />
+            )}
+
+            <Form.Item style={{ marginBottom: 0 }}>
+              <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+                <Button size="large" onClick={handleInvoiceCancel}>
+                  暂不开具
+                </Button>
+                <Button type="primary" size="large" htmlType="submit" loading={invoiceGenerating}>
+                  {invoiceGenerating ? '生成中...' : '生成发票'}
+                </Button>
+              </div>
+            </Form.Item>
+          </Form>
         )}
       </Modal>
     </AppLayout>

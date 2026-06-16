@@ -2,7 +2,7 @@ import Dexie from 'dexie'
 
 const db = new Dexie('CashierCacheDB')
 
-db.version(10).stores({
+db.version(11).stores({
   products: '++id, erp_goods_id, product_name, category_id, category_name, barcode, price, original_price, unit, image, description, stock, status, sort, created_at, updated_at',
   categories: '++id, name, sort, status, created_at, updated_at',
   orders: '++id, order_no, erp_order_id, total_amount, discount_amount, pay_amount, pay_type, pay_status, order_status, sync_status, sync_attempts, sync_error, cashier_id, cashier_name, member_id, member_name, remark, created_at, synced_at',
@@ -27,6 +27,8 @@ db.version(10).stores({
   print_history: '++id, queue_id, order_id, order_no, printer_id, printer_code, category_id, items_count, copies, print_status, print_time, cashier_id, cashier_name, created_at',
   daily_reports: '++id, report_no, report_date, shop_id, shop_name, total_orders, total_amount, discount_amount, refund_amount, actual_amount, cash_amount, wechat_amount, alipay_amount, member_card_amount, other_pay_amount, member_discount_amount, points_deduction_amount, total_items, avg_order_amount, new_member_count, cashier_id, cashier_name, report_status, sync_status, sync_attempts, sync_error, sync_time, erp_push_status, erp_push_time, erp_push_error, remark, created_at, updated_at',
   daily_report_files: '&key, date, format, blob, generated_at',
+  electronic_invoices: '++id, invoice_no, invoice_code, invoice_number, order_id, order_no, shop_id, shop_name, buyer_name, buyer_phone, buyer_email, total_amount, amount, tax_amount, tax_rate, invoice_type, invoice_title_type, invoice_status, qrcode_token, qrcode_content, qrcode_url, invoice_pdf_url, tax_control_status, tax_control_error, tax_control_time, push_status, push_time, push_error, sync_status, sync_attempts, sync_error, sync_time, scanned_count, last_scanned_time, cashier_id, cashier_name, created_at, updated_at',
+  invoice_wallets: '++id, wallet_no, customer_identifier, customer_type, customer_name, customer_phone, invoice_id, invoice_no, invoice_code, invoice_number, invoice_date, invoice_amount, buyer_name, shop_id, shop_name, scan_source, scan_time, wallet_status, is_read, is_favorite, tags, remark, sync_status, sync_time, created_at, updated_at',
 })
 
 class DexieCache {
@@ -1662,7 +1664,268 @@ class DexieCache {
     await db.print_history.clear()
     await db.daily_reports.clear()
     await db.daily_report_files.clear()
+    await db.electronic_invoices.clear()
+    await db.invoice_wallets.clear()
     this.initialized = false
+  }
+
+  async createInvoice(invoiceData) {
+    const now = new Date().toISOString()
+    const invoice = {
+      ...invoiceData,
+      invoice_status: invoiceData.invoice_status ?? 0,
+      sync_status: invoiceData.sync_status ?? 0,
+      sync_attempts: invoiceData.sync_attempts ?? 0,
+      tax_control_status: invoiceData.tax_control_status ?? 0,
+      tax_control_attempts: invoiceData.tax_control_attempts ?? 0,
+      push_status: invoiceData.push_status ?? 0,
+      push_attempts: invoiceData.push_attempts ?? 0,
+      scanned_count: invoiceData.scanned_count ?? 0,
+      created_at: now,
+      updated_at: now,
+    }
+    const id = await db.electronic_invoices.add(invoice)
+    return { ...invoice, id }
+  }
+
+  async getInvoiceById(id) {
+    return await db.electronic_invoices.get(id)
+  }
+
+  async getInvoiceByNo(invoiceNo) {
+    return await db.electronic_invoices.where('invoice_no').equals(invoiceNo).first()
+  }
+
+  async getInvoiceByQrcodeToken(qrcodeToken) {
+    return await db.electronic_invoices.where('qrcode_token').equals(qrcodeToken).first()
+  }
+
+  async getInvoiceByOrderId(orderId) {
+    return await db.electronic_invoices.where('order_id').equals(orderId).first()
+  }
+
+  async getInvoiceList(params = {}) {
+    const { startDate, endDate, invoiceStatus, taxControlStatus, syncStatus, buyerPhone, page = 1, pageSize = 20 } = params
+    let collection = db.electronic_invoices.orderBy('id').reverse()
+
+    if (startDate) {
+      collection = collection.filter(i => i.created_at >= startDate)
+    }
+    if (endDate) {
+      collection = collection.filter(i => i.created_at <= endDate)
+    }
+    if (invoiceStatus !== undefined && invoiceStatus !== null) {
+      collection = collection.filter(i => i.invoice_status === invoiceStatus)
+    }
+    if (taxControlStatus !== undefined && taxControlStatus !== null) {
+      collection = collection.filter(i => i.tax_control_status === taxControlStatus)
+    }
+    if (syncStatus !== undefined && syncStatus !== null) {
+      collection = collection.filter(i => i.sync_status === syncStatus)
+    }
+    if (buyerPhone) {
+      collection = collection.filter(i => i.buyer_phone?.includes(buyerPhone))
+    }
+
+    const allItems = await collection.toArray()
+    const items = allItems.slice((page - 1) * pageSize, page * pageSize)
+
+    return { items, total: allItems.length, page, pageSize }
+  }
+
+  async getUnsyncedInvoices(limit = 50) {
+    return await db.electronic_invoices
+      .filter(i => i.sync_status !== 1)
+      .limit(limit)
+      .sortBy('created_at')
+  }
+
+  async getUntaxedInvoices(limit = 50) {
+    return await db.electronic_invoices
+      .filter(i => i.tax_control_status === 0 || i.tax_control_status === 3)
+      .limit(limit)
+      .sortBy('created_at')
+  }
+
+  async updateInvoice(id, updateData) {
+    const now = new Date().toISOString()
+    return await db.electronic_invoices.update(id, { ...updateData, updated_at: now })
+  }
+
+  async updateInvoiceSyncStatus(id, status, error = null) {
+    const updateData = { sync_status: status }
+    if (status === 1) {
+      updateData.sync_time = new Date().toISOString()
+      updateData.sync_error = null
+    }
+    if (error) {
+      updateData.sync_error = error
+      const invoice = await db.electronic_invoices.get(id)
+      updateData.sync_attempts = (invoice?.sync_attempts || 0) + 1
+    }
+    return await db.electronic_invoices.update(id, updateData)
+  }
+
+  async updateInvoiceTaxControlStatus(id, status, error = null) {
+    const updateData = { tax_control_status: status }
+    if (status === 2) {
+      updateData.tax_control_time = new Date().toISOString()
+      updateData.tax_control_error = null
+    }
+    if (error) {
+      updateData.tax_control_error = error
+      const invoice = await db.electronic_invoices.get(id)
+      updateData.tax_control_attempts = (invoice?.tax_control_attempts || 0) + 1
+    }
+    return await db.electronic_invoices.update(id, updateData)
+  }
+
+  async updateInvoicePushStatus(id, status, error = null) {
+    const updateData = { push_status: status }
+    if (status === 2) {
+      updateData.push_time = new Date().toISOString()
+      updateData.push_error = null
+    }
+    if (error) {
+      updateData.push_error = error
+      const invoice = await db.electronic_invoices.get(id)
+      updateData.push_attempts = (invoice?.push_attempts || 0) + 1
+    }
+    return await db.electronic_invoices.update(id, updateData)
+  }
+
+  async incrementInvoiceScanCount(id) {
+    const invoice = await db.electronic_invoices.get(id)
+    if (!invoice) return false
+    const updateData = {
+      scanned_count: (invoice.scanned_count || 0) + 1,
+      last_scanned_time: new Date().toISOString(),
+    }
+    return await db.electronic_invoices.update(id, updateData)
+  }
+
+  async batchSaveInvoices(invoices) {
+    if (!invoices || invoices.length === 0) return
+    const now = new Date().toISOString()
+    for (const invoice of invoices) {
+      const existing = invoice.invoice_no
+        ? await db.electronic_invoices.where('invoice_no').equals(invoice.invoice_no).first()
+        : invoice.id
+        ? await db.electronic_invoices.get(invoice.id)
+        : null
+
+      if (existing) {
+        await db.electronic_invoices.update(existing.id, { ...invoice, id: existing.id, updated_at: now })
+      } else {
+        await db.electronic_invoices.add({
+          ...invoice,
+          created_at: now,
+          updated_at: now,
+        })
+      }
+    }
+  }
+
+  async saveInvoiceToWallet(walletData) {
+    const now = new Date().toISOString()
+    const wallet = {
+      ...walletData,
+      wallet_status: walletData.wallet_status ?? 1,
+      is_read: walletData.is_read ?? 0,
+      is_favorite: walletData.is_favorite ?? 0,
+      sync_status: walletData.sync_status ?? 0,
+      scan_time: walletData.scan_time ?? now,
+      created_at: now,
+      updated_at: now,
+    }
+    const id = await db.invoice_wallets.add(wallet)
+    return { ...wallet, id }
+  }
+
+  async getWalletList(params = {}) {
+    const { customerIdentifier, walletStatus, startDate, endDate, page = 1, pageSize = 20 } = params
+    let collection = db.invoice_wallets.orderBy('id').reverse()
+
+    if (customerIdentifier) {
+      collection = collection.filter(w => w.customer_identifier === customerIdentifier)
+    }
+    if (walletStatus !== undefined && walletStatus !== null) {
+      collection = collection.filter(w => w.wallet_status === walletStatus)
+    }
+    if (startDate) {
+      collection = collection.filter(w => w.created_at >= startDate)
+    }
+    if (endDate) {
+      collection = collection.filter(w => w.created_at <= endDate)
+    }
+
+    const allItems = await collection.toArray()
+    const items = allItems.slice((page - 1) * pageSize, page * pageSize)
+
+    return { items, total: allItems.length, page, pageSize }
+  }
+
+  async getWalletById(id) {
+    return await db.invoice_wallets.get(id)
+  }
+
+  async getWalletByInvoiceNo(customerIdentifier, invoiceNo) {
+    return await db.invoice_wallets
+      .filter(w => w.customer_identifier === customerIdentifier && w.invoice_no === invoiceNo)
+      .first()
+  }
+
+  async getUnsyncedWallets(limit = 50) {
+    return await db.invoice_wallets
+      .filter(w => w.sync_status !== 1)
+      .limit(limit)
+      .sortBy('created_at')
+  }
+
+  async updateWallet(id, updateData) {
+    const now = new Date().toISOString()
+    return await db.invoice_wallets.update(id, { ...updateData, updated_at: now })
+  }
+
+  async markWalletAsRead(id) {
+    return await db.invoice_wallets.update(id, { is_read: 1 })
+  }
+
+  async toggleWalletFavorite(id) {
+    const wallet = await db.invoice_wallets.get(id)
+    if (!wallet) return false
+    const newFavorite = wallet.is_favorite === 1 ? 0 : 1
+    return await db.invoice_wallets.update(id, { is_favorite: newFavorite })
+  }
+
+  async updateWalletSyncStatus(id, status, error = null) {
+    const updateData = { sync_status: status }
+    if (status === 1) {
+      updateData.sync_time = new Date().toISOString()
+    }
+    return await db.invoice_wallets.update(id, updateData)
+  }
+
+  async batchSaveWallets(wallets) {
+    if (!wallets || wallets.length === 0) return
+    const now = new Date().toISOString()
+    for (const wallet of wallets) {
+      const existing = wallet.wallet_no
+        ? await db.invoice_wallets.where('wallet_no').equals(wallet.wallet_no).first()
+        : wallet.id
+        ? await db.invoice_wallets.get(wallet.id)
+        : null
+
+      if (existing) {
+        await db.invoice_wallets.update(existing.id, { ...wallet, id: existing.id, updated_at: now })
+      } else {
+        await db.invoice_wallets.add({
+          ...wallet,
+          created_at: now,
+          updated_at: now,
+        })
+      }
+    }
   }
 }
 
