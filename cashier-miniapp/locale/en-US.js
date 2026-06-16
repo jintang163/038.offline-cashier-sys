@@ -22,13 +22,38 @@ const enUS = {
     payment: 'Payment',
     cash: 'Cash',
     change: 'Change',
-    submit: 'Submit'
+    submit: 'Submit',
+    tip: 'Tip',
+    person: 'pax',
+    piece: 'pcs'
+  },
+  cart: {
+    cartTitle: 'Cart',
+    cartEmpty: 'Your cart is empty',
+    cartCount: '{0} items',
+    clearCart: 'Clear Cart',
+    goOrder: 'Order',
+    goSettle: 'Checkout',
+    addedCart: 'Added to cart',
+    removed: 'Removed',
+    cleared: 'Cleared',
+    confirmDelete: 'Remove this item?',
+    confirmClear: 'Clear all items?',
+    subtotal: 'Subtotal'
+  },
+  category: {
+    staple: 'Staple',
+    hotDish: 'Hot Dish',
+    coldDish: 'Cold Dish',
+    drink: 'Drinks',
+    dessert: 'Dessert',
+    all: 'All'
   },
   order: {
     order: 'Order',
     orderNo: 'Order No.',
     orderDetail: 'Order Detail',
-    orderList: 'Order List',
+    orderList: 'Orders',
     createOrder: 'Create Order',
     tableNumber: 'Table',
     peopleCount: 'Guests',
@@ -40,7 +65,34 @@ const enUS = {
     orderFail: 'Order Failed',
     pendingPayment: 'Pending',
     paid: 'Paid',
-    cancelled: 'Cancelled'
+    preparing: 'Preparing',
+    completed: 'Completed',
+    cancelled: 'Cancelled',
+    allOrders: 'All',
+    noOrders: 'No orders',
+    payNow: 'Pay Now',
+    cancelOrder: 'Cancel',
+    reorder: 'Reorder',
+    backMenu: 'Menu',
+    goodsDetail: 'Items',
+    goodsCount: '{0} items',
+    moreGoods: '+{0} more',
+    goodsSubtotal: 'Subtotal',
+    deliveryFee: 'Delivery Fee',
+    actualPay: 'Amount Paid',
+    orderTime: 'Order Time',
+    contactService: 'Contact Us',
+    selectTablePlaceholder: 'Select table',
+    peoplePlaceholder: 'Number of guests',
+    remarkPlaceholder: 'Remark (optional)',
+    payPrompt: 'Please complete payment',
+    preparingPrompt: 'Preparing your order',
+    completedPrompt: 'Order completed, thank you',
+    cancelledPrompt: 'Order cancelled',
+    confirmPay: 'Confirm payment?',
+    confirmCancel: 'Cancel this order?',
+    addCartConfirm: 'Add items to cart?',
+    orderNotExist: 'Order not found'
   },
   payment: {
     payMethod: 'Payment Method',
@@ -55,7 +107,8 @@ const enUS = {
     convertedAmount: 'Converted',
     paySuccess: 'Payment Successful',
     payFail: 'Payment Failed',
-    selectCurrency: 'Select Currency'
+    selectCurrency: 'Select Currency',
+    rateInfo: '1 {0} = ¥{1}'
   },
   stockCheck: {
     stockCheck: 'Stock Check',
@@ -79,7 +132,8 @@ const enUS = {
     offline: 'Offline',
     networkError: 'Network Error',
     noNetwork: 'No network, please check connection',
-    syncWhenOnline: 'Will sync when online'
+    syncWhenOnline: 'Will sync when online',
+    offlineMode: 'Offline mode, showing cached data'
   },
   message: {
     cartEmpty: 'Cart is empty',

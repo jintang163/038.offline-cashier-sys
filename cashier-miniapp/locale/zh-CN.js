@@ -22,7 +22,32 @@ const zhCN = {
     payment: '支付',
     cash: '现金',
     change: '找零',
-    submit: '提交'
+    submit: '提交',
+    tip: '提示',
+    person: '人',
+    piece: '件'
+  },
+  cart: {
+    cartTitle: '购物车',
+    cartEmpty: '购物车空空如也~',
+    cartCount: '共 {0} 件商品',
+    clearCart: '清空购物车',
+    goOrder: '去点餐',
+    goSettle: '去结算',
+    addedCart: '已加入购物车',
+    removed: '已删除',
+    cleared: '已清空',
+    confirmDelete: '确定要删除该商品吗？',
+    confirmClear: '确定要清空购物车吗？',
+    subtotal: '合计'
+  },
+  category: {
+    staple: '主食',
+    hotDish: '热菜',
+    coldDish: '凉菜',
+    drink: '饮品',
+    dessert: '甜品',
+    all: '全部'
   },
   order: {
     order: '订单',
@@ -40,7 +65,34 @@ const zhCN = {
     orderFail: '下单失败',
     pendingPayment: '待支付',
     paid: '已支付',
-    cancelled: '已取消'
+    preparing: '制作中',
+    completed: '已完成',
+    cancelled: '已取消',
+    allOrders: '全部',
+    noOrders: '暂无订单',
+    payNow: '去支付',
+    cancelOrder: '取消订单',
+    reorder: '再来一单',
+    backMenu: '返回菜单',
+    goodsDetail: '商品明细',
+    goodsCount: '共{0}件商品',
+    moreGoods: '等{0}件商品',
+    goodsSubtotal: '商品合计',
+    deliveryFee: '配送费',
+    actualPay: '实付金额',
+    orderTime: '下单时间',
+    contactService: '联系客服',
+    selectTablePlaceholder: '请选择桌号',
+    peoplePlaceholder: '请输入人数',
+    remarkPlaceholder: '请输入备注（选填）',
+    payPrompt: '请尽快完成支付',
+    preparingPrompt: '正在为您准备中',
+    completedPrompt: '订单已完成，感谢您的惠顾',
+    cancelledPrompt: '订单已取消',
+    confirmPay: '确认支付该订单？',
+    confirmCancel: '确定要取消该订单吗？',
+    addCartConfirm: '将商品加入购物车？',
+    orderNotExist: '订单不存在'
   },
   payment: {
     payMethod: '支付方式',
@@ -55,7 +107,8 @@ const zhCN = {
     convertedAmount: '换算后金额',
     paySuccess: '支付成功',
     payFail: '支付失败',
-    selectCurrency: '选择货币'
+    selectCurrency: '选择货币',
+    rateInfo: '1 {0} = ¥{1}'
   },
   stockCheck: {
     stockCheck: '库存盘点',
@@ -79,7 +132,8 @@ const zhCN = {
     offline: '离线',
     networkError: '网络异常',
     noNetwork: '当前无网络，请检查网络连接',
-    syncWhenOnline: '网络恢复后自动同步'
+    syncWhenOnline: '网络恢复后自动同步',
+    offlineMode: '当前处于离线模式，展示缓存数据'
   },
   message: {
     cartEmpty: '购物车是空的',

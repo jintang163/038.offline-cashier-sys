@@ -11,15 +11,15 @@ let cachedRateMap = null
 let cacheLoadTime = 0
 
 const DEFAULT_CURRENCIES = [
-  { code: 'CNY', name: '人民币', symbol: '¥', rateToCny: 1, rateFromCny: 1 },
-  { code: 'USD', name: '美元', symbol: '$', rateToCny: 7.25, rateFromCny: 0.137931 },
-  { code: 'JPY', name: '日元', symbol: '¥', rateToCny: 0.048, rateFromCny: 20.833333 },
-  { code: 'EUR', name: '欧元', symbol: '€', rateToCny: 7.85, rateFromCny: 0.127389 },
-  { code: 'GBP', name: '英镑', symbol: '£', rateToCny: 9.15, rateFromCny: 0.10929 },
-  { code: 'HKD', name: '港币', symbol: 'HK$', rateToCny: 0.928, rateFromCny: 1.077586 },
-  { code: 'TWD', name: '新台币', symbol: 'NT$', rateToCny: 0.228, rateFromCny: 4.385965 },
-  { code: 'THB', name: '泰铢', symbol: '฿', rateToCny: 0.205, rateFromCny: 4.878049 },
-  { code: 'KRW', name: '韩元', symbol: '₩', rateToCny: 0.0054, rateFromCny: 185.185185 }
+  { code: 'CNY', name: '人民币', symbol: '¥', rateToCny: 1, rateFromCny: 1, isEnabled: 1 },
+  { code: 'USD', name: '美元', symbol: '$', rateToCny: 7.25, rateFromCny: 0.137931, isEnabled: 1 },
+  { code: 'JPY', name: '日元', symbol: '¥', rateToCny: 0.048, rateFromCny: 20.833333, isEnabled: 1 },
+  { code: 'EUR', name: '欧元', symbol: '€', rateToCny: 7.85, rateFromCny: 0.127389, isEnabled: 1 },
+  { code: 'GBP', name: '英镑', symbol: '£', rateToCny: 9.15, rateFromCny: 0.10929, isEnabled: 1 },
+  { code: 'HKD', name: '港币', symbol: 'HK$', rateToCny: 0.928, rateFromCny: 1.077586, isEnabled: 1 },
+  { code: 'TWD', name: '新台币', symbol: 'NT$', rateToCny: 0.228, rateFromCny: 4.385965, isEnabled: 1 },
+  { code: 'THB', name: '泰铢', symbol: '฿', rateToCny: 0.205, rateFromCny: 4.878049, isEnabled: 1 },
+  { code: 'KRW', name: '韩元', symbol: '₩', rateToCny: 0.0054, rateFromCny: 185.185185, isEnabled: 1 }
 ]
 
 function init() {
@@ -69,7 +69,7 @@ function getRates() {
 }
 
 function getEnabledCurrencies() {
-  return getRates().filter(r => r.rateToCny > 0)
+  return getRates().filter(r => r.isEnabled === 1)
 }
 
 function getRate(currencyCode) {
@@ -77,9 +77,13 @@ function getRate(currencyCode) {
     init()
   }
   if (currencyCode === 'CNY') {
-    return { code: 'CNY', name: '人民币', symbol: '¥', rateToCny: 1, rateFromCny: 1 }
+    return { code: 'CNY', name: '人民币', symbol: '¥', rateToCny: 1, rateFromCny: 1, isEnabled: 1 }
   }
-  return cachedRateMap[currencyCode] || null
+  const rate = cachedRateMap[currencyCode]
+  if (rate && rate.isEnabled === 1) {
+    return rate
+  }
+  return null
 }
 
 function convertToCny(currencyCode, amount) {
@@ -168,11 +172,12 @@ async function syncRatesFromServer() {
                     name: r.currencyName,
                     symbol: r.currencySymbol,
                     rateToCny: Number(r.rateToCny),
-                    rateFromCny: Number(r.rateFromCny)
+                    rateFromCny: Number(r.rateFromCny),
+                    isEnabled: r.isEnabled !== undefined ? Number(r.isEnabled) : 1
                   }))
                   const cnyRate = cachedRates.find(r => r.code === 'CNY')
                   if (!cnyRate) {
-                    cachedRates.unshift({ code: 'CNY', name: '人民币', symbol: '¥', rateToCny: 1, rateFromCny: 1 })
+                    cachedRates.unshift({ code: 'CNY', name: '人民币', symbol: '¥', rateToCny: 1, rateFromCny: 1, isEnabled: 1 })
                   }
                   cacheLoadTime = Date.now()
                   buildRateMap()

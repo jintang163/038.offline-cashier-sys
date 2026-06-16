@@ -1,14 +1,14 @@
 <view class="cart-page">
   <view wx:if="{{cartList.length === 0}}" class="empty">
     <image src="/images/empty/cart-empty.png" mode="aspectFit"></image>
-    <text>购物车空空如也~</text>
-    <view class="go-menu-btn" bindtap="onGoMenu">去点餐</view>
+    <text>{{i18n['cart.cartEmpty']}}</text>
+    <view class="go-menu-btn" bindtap="onGoMenu">{{i18n['cart.goOrder']}}</view>
   </view>
 
   <view wx:else class="cart-content">
     <view class="cart-header">
-      <text class="cart-title">共 {{cartCount}} 件商品</text>
-      <text class="edit-btn" bindtap="toggleEdit">{{isEdit ? '完成' : '编辑'}}</text>
+      <text class="cart-title">{{i18n.cartCountText}}</text>
+      <text class="edit-btn" bindtap="toggleEdit">{{isEdit ? i18n['common.confirm'] : i18n['common.edit']}}</text>
     </view>
 
     <scroll-view class="cart-list" scroll-y>
@@ -23,22 +23,22 @@
               <text class="quantity-num">{{item.quantity}}</text>
               <view class="btn add" data-id="{{item.id}}" data-item="{{item}}" bindtap="onAdd">+</view>
             </view>
-            <view wx:if="{{isEdit}}" class="delete-btn" data-id="{{item.id}}" bindtap="onDeleteItem">删除</view>
+            <view wx:if="{{isEdit}}" class="delete-btn" data-id="{{item.id}}" bindtap="onDeleteItem">{{i18n['common.delete']}}</view>
           </view>
         </view>
       </view>
     </scroll-view>
 
     <view wx:if="{{isEdit}}" class="clear-cart" bindtap="onClearCart">
-      清空购物车
+      {{i18n['cart.clearCart']}}
     </view>
   </view>
 
   <view wx:if="{{cartList.length > 0 && !isEdit}}" class="settle-bar">
     <view class="total-info">
-      <text class="total-label">合计：</text>
+      <text class="total-label">{{i18n['common.total']}}：</text>
       <text class="total-price">{{cartTotal}}</text>
     </view>
-    <view class="settle-btn" bindtap="onSettle">去结算</view>
+    <view class="settle-btn" bindtap="onSettle">{{i18n['cart.goSettle']}}</view>
   </view>
 </view>

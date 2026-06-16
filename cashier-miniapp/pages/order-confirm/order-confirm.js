@@ -58,16 +58,26 @@ Page({
         'common.cancel',
         'common.back',
         'common.total',
+        'common.loading',
+        'common.person',
         'order.createOrder',
         'order.tableNumber',
         'order.peopleCount',
         'order.remark',
         'order.totalAmount',
         'order.orderSuccess',
+        'order.goodsDetail',
+        'order.goodsSubtotal',
+        'order.deliveryFee',
+        'order.selectTablePlaceholder',
+        'order.peoplePlaceholder',
+        'order.remarkPlaceholder',
         'message.cartEmpty',
         'message.selectTable',
         'payment.payMethod',
         'payment.cashPayment',
+        'payment.wechatPay',
+        'payment.alipay',
         'payment.foreignCurrency',
         'payment.selectCurrency'
       ])
@@ -155,13 +165,49 @@ Page({
     const payMethod = e.currentTarget.dataset.method
     this.setData({ showPayOptions: false })
 
+    if (this.data.isSubmitting) return
+
     if (payMethod === 'foreign') {
-      wx.navigateTo({
-        url: `/pages/foreign-payment/foreign-payment?orderId=${Date.now()}&orderNo=${generateOrderId()}&amount=${this.data.cartTotal}`
-      })
+      this.submitOrderFirst('foreign')
     } else {
       this.doSubmitOrder(payMethod)
     }
+  },
+
+  submitOrderFirst(payMethod) {
+    if (this.data.isSubmitting) return
+
+    if (!this.data.tableNumber) {
+      wx.showToast({
+        title: i18n.t('message.selectTable'),
+        icon: 'none'
+      })
+      return
+    }
+
+    if (this.data.cartList.length === 0) {
+      wx.showToast({
+        title: i18n.t('message.cartEmpty'),
+        icon: 'none'
+      })
+      return
+    }
+
+    this.setData({ isSubmitting: true })
+    wx.showLoading({ title: i18n.t('common.loading') })
+
+    const order = this.createOrder()
+
+    storage.addOrder(order)
+    storage.setTableNumber(this.data.tableNumber)
+    cart.clearCart()
+
+    wx.hideLoading()
+    this.setData({ isSubmitting: false })
+
+    wx.navigateTo({
+      url: `/pages/foreign-payment/foreign-payment?orderId=${order.id}&orderNo=${order.orderNo}&amount=${order.totalAmount}`
+    })
   },
 
   onClosePayOptions() {

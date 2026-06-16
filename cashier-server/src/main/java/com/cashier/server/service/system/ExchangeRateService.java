@@ -10,7 +10,7 @@ import java.util.Map;
 
 public interface ExchangeRateService extends IService<ExchangeRate> {
 
-    IPage<ExchangeRate> getRateList(Integer page, Integer size, String currencyCode, Integer status);
+    IPage<ExchangeRate> getRateList(Integer page, Integer size, String currencyCode, Integer isEnabled);
 
     List<ExchangeRate> getEnabledRates();
 

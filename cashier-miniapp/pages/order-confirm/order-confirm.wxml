@@ -14,7 +14,7 @@
       <text class="form-label">{{i18n['order.tableNumber']}}</text>
       <picker bindchange="onTableChange" value="{{tablePickerIndex}}" range="{{tableOptions}}">
         <view class="form-picker">
-          <text class="{{tableNumber ? '' : 'placeholder'}}">{{tableNumber || '请选择桌号'}}</text>
+          <text class="{{tableNumber ? '' : 'placeholder'}}">{{tableNumber || i18n['order.selectTablePlaceholder']}}</text>
           <text class="picker-arrow">></text>
         </view>
       </picker>
@@ -27,16 +27,16 @@
           type="number"
           value="{{peopleCount}}"
           bindinput="onPeopleChange"
-          placeholder="请输入人数"
+          placeholder="{{i18n['order.peoplePlaceholder']}}"
         />
-        <text class="unit">人</text>
+        <text class="unit">{{i18n['common.person']}}</text>
       </view>
     </view>
     <view class="form-item">
       <text class="form-label">{{i18n['order.remark']}}</text>
       <input
         class="form-input"
-        placeholder="请输入备注（选填）"
+        placeholder="{{i18n['order.remarkPlaceholder']}}"
         value="{{remark}}"
         bindinput="onRemarkInput"
         maxlength="50"
@@ -45,7 +45,7 @@
   </view>
 
   <view class="section">
-    <view class="section-title">商品明细</view>
+    <view class="section-title">{{i18n['order.goodsDetail']}}</view>
     <view class="goods-list">
       <view wx:for="{{cartList}}" wx:key="id" class="goods-item">
         <image class="goods-image" src="{{item.image}}" mode="aspectFill"></image>
@@ -60,7 +60,7 @@
 
   <view class="section price-section">
     <view class="price-row">
-      <text class="price-label">商品合计</text>
+      <text class="price-label">{{i18n['order.goodsSubtotal']}}</text>
       <text class="price-value">¥{{cartTotal}}</text>
     </view>
     <view class="price-row" wx:if="{{selectedCurrency !== 'CNY' && foreignAmount > 0}}">
@@ -68,7 +68,7 @@
       <text class="price-value">{{currencySymbol}}{{foreignAmount}}</text>
     </view>
     <view class="price-row">
-      <text class="price-label">配送费</text>
+      <text class="price-label">{{i18n['order.deliveryFee']}}</text>
       <text class="price-value">¥0.00</text>
     </view>
     <view class="divider"></view>
@@ -89,7 +89,7 @@
         ({{currencySymbol}}{{foreignAmount}})</text>
     </view>
     <view class="submit-btn {{isSubmitting ? 'disabled' : ''}}" bindtap="onSubmitOrder">
-      {{isSubmitting ? '提交中...' : i18n['common.confirm']}}
+      {{isSubmitting ? i18n['common.loading'] : i18n['common.confirm']}}
     </view>
   </view>
 
@@ -113,12 +113,12 @@
         </view>
         <view class="pay-option-item" bindtap="onSelectPayMethod" data-method="wechat">
           <text class="pay-option-icon">💚</text>
-          <text class="pay-option-name">微信支付</text>
+          <text class="pay-option-name">{{i18n['payment.wechatPay']}}</text>
           <text class="pay-option-arrow">></text>
         </view>
         <view class="pay-option-item" bindtap="onSelectPayMethod" data-method="alipay">
           <text class="pay-option-icon">💙</text>
-          <text class="pay-option-name">支付宝</text>
+          <text class="pay-option-name">{{i18n['payment.alipay']}}</text>
           <text class="pay-option-arrow">></text>
         </view>
       </view>

@@ -1,26 +1,53 @@
 const app = getApp()
 const storage = require('../../utils/storage.js')
 const { formatDate, getOrderStatusText, getOrderStatusColor } = require('../../utils/format.js')
+const i18n = require('../../utils/i18n.js')
 
 Page({
   data: {
     orderList: [],
     activeTab: 'all',
-    tabs: [
-      { key: 'all', name: '全部' },
-      { key: 'pending', name: '待支付' },
-      { key: 'preparing', name: '制作中' },
-      { key: 'completed', name: '已完成' }
-    ],
-    isLoading: false
+    tabs: [],
+    isLoading: false,
+    i18n: {}
   },
 
   onLoad() {
+    this.loadI18n()
     this.loadOrders()
+    this.unsubscribeLangChange = i18n.onChange(() => {
+      this.loadI18n()
+    })
   },
 
   onShow() {
     this.loadOrders()
+  },
+
+  onUnload() {
+    if (this.unsubscribeLangChange) {
+      this.unsubscribeLangChange()
+    }
+  },
+
+  loadI18n() {
+    this.setData({
+      i18n: i18n.getPageTranslations([
+        'order.noOrders',
+        'cart.goOrder',
+        'order.orderNo',
+        'common.total',
+        'order.cancelOrder',
+        'order.payNow',
+        'order.reorder'
+      ]),
+      tabs: [
+        { key: 'all', name: i18n.t('order.allOrders') },
+        { key: 'pending', name: i18n.t('order.pendingPayment') },
+        { key: 'preparing', name: i18n.t('order.preparing') },
+        { key: 'completed', name: i18n.t('order.completed') }
+      ]
+    })
   },
 
   loadOrders() {
@@ -39,7 +66,9 @@ Page({
         statusColor: getOrderStatusColor(order.status),
         createTimeText: formatDate(order.createTime),
         goodsCount: order.goods.reduce((sum, item) => sum + item.quantity, 0),
-        firstGoods: order.goods[0] || {}
+        firstGoods: order.goods[0] || {},
+        moreGoodsText: i18n.t('order.moreGoods', order.goods.length),
+        goodsCountText: i18n.t('order.goodsCount', order.goods.reduce((sum, item) => sum + item.quantity, 0))
       }))
 
       this.setData({
@@ -71,8 +100,8 @@ Page({
 
     if (order) {
       wx.showModal({
-        title: '提示',
-        content: '确认支付该订单？',
+        title: i18n.t('common.tip'),
+        content: i18n.t('order.confirmPay'),
         success: (res) => {
           if (res.confirm) {
             order.status = 'paid'
@@ -80,7 +109,7 @@ Page({
             storage.setOrders(orders)
             this.loadOrders()
             wx.showToast({
-              title: '支付成功',
+              title: i18n.t('payment.paySuccess'),
               icon: 'success'
             })
           }
@@ -93,8 +122,8 @@ Page({
     const orderId = e.currentTarget.dataset.id
 
     wx.showModal({
-      title: '提示',
-      content: '确定要取消该订单吗？',
+      title: i18n.t('common.tip'),
+      content: i18n.t('order.confirmCancel'),
       success: (res) => {
         if (res.confirm) {
           const orders = storage.getOrders()
@@ -105,7 +134,7 @@ Page({
             storage.setOrders(orders)
             this.loadOrders()
             wx.showToast({
-              title: '已取消',
+              title: i18n.t('order.cancelled'),
               icon: 'success'
             })
           }

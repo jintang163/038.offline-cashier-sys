@@ -54,12 +54,11 @@ Page({
         'common.language',
         'common.currency',
         'common.total',
-        'message.cartEmpty'
+        'message.cartEmpty',
+        'network.offlineMode',
+        'order.deliveryFee',
+        'cart.goSettle'
       ])
-    })
-
-    wx.setNavigationBarTitle({
-      title: i18n.t('common.home') === 'Home' ? '扫码点餐' : '扫码点餐'
     })
   },
 

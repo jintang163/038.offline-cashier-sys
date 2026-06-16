@@ -2,6 +2,7 @@ const app = getApp()
 const storage = require('../../utils/storage.js')
 const cart = require('../../utils/cart.js')
 const { formatDate, getOrderStatusText, getOrderStatusColor } = require('../../utils/format.js')
+const i18n = require('../../utils/i18n.js')
 
 Page({
   data: {
@@ -10,19 +11,59 @@ Page({
     statusText: '',
     statusColor: '',
     createTimeText: '',
-    goodsCount: 0
+    goodsCount: 0,
+    goodsCountText: '',
+    i18n: {}
   },
 
   onLoad(options) {
     const orderId = options.id
     this.setData({ orderId })
+    this.loadI18n()
     this.loadOrderDetail()
+    this.unsubscribeLangChange = i18n.onChange(() => {
+      this.loadI18n()
+      this.loadOrderDetail()
+    })
   },
 
   onShow() {
     if (this.data.orderId) {
       this.loadOrderDetail()
     }
+  },
+
+  onUnload() {
+    if (this.unsubscribeLangChange) {
+      this.unsubscribeLangChange()
+    }
+  },
+
+  loadI18n() {
+    this.setData({
+      i18n: i18n.getPageTranslations([
+        'order.payPrompt',
+        'order.preparingPrompt',
+        'order.completedPrompt',
+        'order.cancelledPrompt',
+        'order.tableNumber',
+        'order.peopleCount',
+        'common.person',
+        'order.remark',
+        'order.goodsDetail',
+        'order.goodsSubtotal',
+        'order.deliveryFee',
+        'order.actualPay',
+        'order.orderNo',
+        'order.orderTime',
+        'order.contactService',
+        'order.cancelOrder',
+        'order.payNow',
+        'order.reorder',
+        'order.backMenu',
+        'order.orderNotExist'
+      ])
+    })
   },
 
   loadOrderDetail() {
@@ -36,11 +77,12 @@ Page({
         statusText: getOrderStatusText(order.status),
         statusColor: getOrderStatusColor(order.status),
         createTimeText: formatDate(order.createTime),
-        goodsCount
+        goodsCount,
+        goodsCountText: i18n.t('order.goodsCount', goodsCount)
       })
     } else {
       wx.showToast({
-        title: '订单不存在',
+        title: i18n.t('order.orderNotExist'),
         icon: 'none'
       })
     }
@@ -50,8 +92,8 @@ Page({
     if (!this.data.order || this.data.order.status !== 'pending') return
 
     wx.showModal({
-      title: '提示',
-      content: '确认支付该订单？',
+      title: i18n.t('common.tip'),
+      content: i18n.t('order.confirmPay'),
       success: (res) => {
         if (res.confirm) {
           const orders = storage.getOrders()
@@ -62,7 +104,7 @@ Page({
             storage.setOrders(orders)
             this.loadOrderDetail()
             wx.showToast({
-              title: '支付成功',
+              title: i18n.t('payment.paySuccess'),
               icon: 'success'
             })
           }
@@ -75,8 +117,8 @@ Page({
     if (!this.data.order || this.data.order.status !== 'pending') return
 
     wx.showModal({
-      title: '提示',
-      content: '确定要取消该订单吗？',
+      title: i18n.t('common.tip'),
+      content: i18n.t('order.confirmCancel'),
       success: (res) => {
         if (res.confirm) {
           const orders = storage.getOrders()
@@ -87,7 +129,7 @@ Page({
             storage.setOrders(orders)
             this.loadOrderDetail()
             wx.showToast({
-              title: '已取消',
+              title: i18n.t('order.cancelled'),
               icon: 'success'
             })
           }
@@ -100,8 +142,8 @@ Page({
     if (!this.data.order) return
 
     wx.showModal({
-      title: '提示',
-      content: '将商品加入购物车？',
+      title: i18n.t('common.tip'),
+      content: i18n.t('order.addCartConfirm'),
       success: (res) => {
         if (res.confirm) {
           this.data.order.goods.forEach(item => {
@@ -109,7 +151,7 @@ Page({
           })
 
           wx.showToast({
-            title: '已加入购物车',
+            title: i18n.t('cart.addedCart'),
             icon: 'success'
           })
 
@@ -134,7 +176,7 @@ Page({
       phoneNumber: '400-123-4567',
       fail: () => {
         wx.showToast({
-          title: '拨号失败',
+          title: i18n.t('common.fail'),
           icon: 'none'
         })
       }

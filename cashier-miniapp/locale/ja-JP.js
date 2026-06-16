@@ -22,7 +22,32 @@ const jaJP = {
     payment: 'お支払い',
     cash: '現金',
     change: 'お釣り',
-    submit: '送信'
+    submit: '送信',
+    tip: 'ヒント',
+    person: '名',
+    piece: '点'
+  },
+  cart: {
+    cartTitle: 'カート',
+    cartEmpty: 'カートは空です',
+    cartCount: '{0}点の商品',
+    clearCart: 'カートを空にする',
+    goOrder: '注文する',
+    goSettle: '会計する',
+    addedCart: 'カートに追加しました',
+    removed: '削除しました',
+    cleared: 'クリアしました',
+    confirmDelete: 'この商品を削除しますか？',
+    confirmClear: 'カートを空にしますか？',
+    subtotal: '小計'
+  },
+  category: {
+    staple: '主食',
+    hotDish: '熱菜',
+    coldDish: '冷菜',
+    drink: 'ドリンク',
+    dessert: 'デザート',
+    all: 'すべて'
   },
   order: {
     order: '注文',
@@ -40,7 +65,34 @@ const jaJP = {
     orderFail: '注文失敗',
     pendingPayment: '支払待ち',
     paid: '支払済み',
-    cancelled: 'キャンセル'
+    preparing: '準備中',
+    completed: '完了',
+    cancelled: 'キャンセル',
+    allOrders: 'すべて',
+    noOrders: '注文はありません',
+    payNow: '支払う',
+    cancelOrder: 'キャンセル',
+    reorder: '再注文',
+    backMenu: 'メニュー',
+    goodsDetail: '商品明細',
+    goodsCount: '{0}点の商品',
+    moreGoods: '他{0}点',
+    goodsSubtotal: '商品小計',
+    deliveryFee: '配達料',
+    actualPay: 'お支払い額',
+    orderTime: '注文時間',
+    contactService: 'お問い合わせ',
+    selectTablePlaceholder: 'テーブルを選択',
+    peoplePlaceholder: '人数を入力',
+    remarkPlaceholder: '備考（任意）',
+    payPrompt: 'お早めにお支払いください',
+    preparingPrompt: 'ご準備中です',
+    completedPrompt: '注文完了、ありがとうございました',
+    cancelledPrompt: '注文はキャンセルされました',
+    confirmPay: 'お支払い確認しますか？',
+    confirmCancel: 'この注文をキャンセルしますか？',
+    addCartConfirm: 'カートに追加しますか？',
+    orderNotExist: '注文が見つかりません'
   },
   payment: {
     payMethod: 'お支払い方法',
@@ -55,7 +107,8 @@ const jaJP = {
     convertedAmount: '換算後',
     paySuccess: '支払完了',
     payFail: '支払失敗',
-    selectCurrency: '通貨選択'
+    selectCurrency: '通貨選択',
+    rateInfo: '1 {0} = ¥{1}'
   },
   stockCheck: {
     stockCheck: '棚卸し',
@@ -79,7 +132,8 @@ const jaJP = {
     offline: 'オフライン',
     networkError: 'ネットワークエラー',
     noNetwork: 'ネットワークに接続できません',
-    syncWhenOnline: 'オンライン時に自動同期'
+    syncWhenOnline: 'オンライン時に自動同期',
+    offlineMode: 'オフラインモード、キャッシュデータを表示'
   },
   message: {
     cartEmpty: 'カートは空です',

@@ -26,8 +26,8 @@ public class ExchangeRateController {
             @RequestParam(defaultValue = "1") Integer page,
             @RequestParam(defaultValue = "20") Integer size,
             @RequestParam(required = false) String currencyCode,
-            @RequestParam(required = false) Integer status) {
-        return Result.success(exchangeRateService.getRateList(page, size, currencyCode, status));
+            @RequestParam(required = false) Integer isEnabled) {
+        return Result.success(exchangeRateService.getRateList(page, size, currencyCode, isEnabled));
     }
 
     @GetMapping("/enabled")

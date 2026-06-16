@@ -29,13 +29,13 @@ public class ExchangeRateServiceImpl extends ServiceImpl<ExchangeRateMapper, Exc
     private static final int SCALE = 6;
 
     @Override
-    public IPage<ExchangeRate> getRateList(Integer page, Integer size, String currencyCode, Integer status) {
+    public IPage<ExchangeRate> getRateList(Integer page, Integer size, String currencyCode, Integer isEnabled) {
         LambdaQueryWrapper<ExchangeRate> wrapper = new LambdaQueryWrapper<>();
         if (currencyCode != null && !currencyCode.isEmpty()) {
             wrapper.like(ExchangeRate::getCurrencyCode, currencyCode);
         }
-        if (status != null) {
-            wrapper.eq(ExchangeRate::getStatus, status);
+        if (isEnabled != null) {
+            wrapper.eq(ExchangeRate::getIsEnabled, isEnabled);
         }
         wrapper.orderByDesc(ExchangeRate::getRateTime);
         return page(new Page<>(page, size), wrapper);
@@ -44,7 +44,7 @@ public class ExchangeRateServiceImpl extends ServiceImpl<ExchangeRateMapper, Exc
     @Override
     public List<ExchangeRate> getEnabledRates() {
         LambdaQueryWrapper<ExchangeRate> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(ExchangeRate::getStatus, STATUS_ENABLED)
+        wrapper.eq(ExchangeRate::getIsEnabled, STATUS_ENABLED)
                 .orderByAsc(ExchangeRate::getCurrencyCode);
         return list(wrapper);
     }
@@ -59,12 +59,12 @@ public class ExchangeRateServiceImpl extends ServiceImpl<ExchangeRateMapper, Exc
             cnyRate.setRateToCny(BigDecimal.ONE);
             cnyRate.setRateFromCny(BigDecimal.ONE);
             cnyRate.setRateTime(LocalDateTime.now());
-            cnyRate.setStatus(STATUS_ENABLED);
+            cnyRate.setIsEnabled(STATUS_ENABLED);
             return cnyRate;
         }
         LambdaQueryWrapper<ExchangeRate> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(ExchangeRate::getCurrencyCode, currencyCode)
-                .eq(ExchangeRate::getStatus, STATUS_ENABLED)
+                .eq(ExchangeRate::getIsEnabled, STATUS_ENABLED)
                 .orderByDesc(ExchangeRate::getRateTime)
                 .last("LIMIT 1");
         ExchangeRate rate = getOne(wrapper);
@@ -103,7 +103,7 @@ public class ExchangeRateServiceImpl extends ServiceImpl<ExchangeRateMapper, Exc
         rate.setRateFromCny(BigDecimal.ONE.divide(rateToCny, SCALE, RoundingMode.HALF_UP));
         rate.setRateTime(LocalDateTime.now());
         rate.setSource(source);
-        rate.setStatus(STATUS_ENABLED);
+        rate.setIsEnabled(STATUS_ENABLED);
 
         ExchangeRate existing = getBaseMapper().selectOne(
                 new LambdaQueryWrapper<ExchangeRate>().eq(ExchangeRate::getCurrencyCode, currencyCode));
@@ -173,6 +173,7 @@ public class ExchangeRateServiceImpl extends ServiceImpl<ExchangeRateMapper, Exc
             rateInfo.put("rateToCny", rate.getRateToCny());
             rateInfo.put("rateFromCny", rate.getRateFromCny());
             rateInfo.put("rateTime", rate.getRateTime());
+            rateInfo.put("isEnabled", rate.getIsEnabled());
             rateMap.put(rate.getCurrencyCode(), rateInfo);
         }
         snapshot.put("rateMap", rateMap);

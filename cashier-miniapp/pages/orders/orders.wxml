@@ -13,8 +13,8 @@
 
   <view wx:if="{{orderList.length === 0 && !isLoading}}" class="empty">
     <image src="/images/empty/order-empty.png" mode="aspectFit"></image>
-    <text>暂无订单</text>
-    <view class="go-menu-btn" bindtap="onGoMenu">去点餐</view>
+    <text>{{i18n['order.noOrders']}}</text>
+    <view class="go-menu-btn" bindtap="onGoMenu">{{i18n['cart.goOrder']}}</view>
   </view>
 
   <scroll-view wx:else class="order-list" scroll-y enable-back-to-top>
@@ -26,7 +26,7 @@
       bindtap="onOrderTap"
     >
       <view class="order-header">
-        <text class="order-no">订单号：{{item.orderNo}}</text>
+        <text class="order-no">{{i18n['order.orderNo']}}：{{item.orderNo}}</text>
         <text class="order-status" style="color: {{item.statusColor}}">{{item.statusText}}</text>
       </view>
 
@@ -35,12 +35,12 @@
         <view class="goods-info">
           <view class="goods-name text-ellipsis">{{item.firstGoods.name}}</view>
           <view class="goods-more" wx:if="{{item.goods.length > 1}}">
-            等{{item.goods.length}}件商品
+            {{item.moreGoodsText}}
           </view>
-          <view class="goods-count">共{{item.goodsCount}}件</view>
+          <view class="goods-count">{{item.goodsCountText}}</view>
         </view>
         <view class="order-amount">
-          <text class="amount-label">合计</text>
+          <text class="amount-label">{{i18n['common.total']}}</text>
           <text class="amount-value">{{item.totalAmount}}</text>
         </view>
       </view>
@@ -54,7 +54,7 @@
             data-id="{{item.id}}"
             catchtap="onCancelOrder"
           >
-            取消订单
+            {{i18n['order.cancelOrder']}}
           </view>
           <view
             wx:if="{{item.status === 'pending'}}"
@@ -62,7 +62,7 @@
             data-id="{{item.id}}"
             catchtap="onPayOrder"
           >
-            去支付
+            {{i18n['order.payNow']}}
           </view>
           <view
             wx:if="{{item.status === 'completed'}}"
@@ -70,7 +70,7 @@
             data-id="{{item.id}}"
             catchtap="onOrderTap"
           >
-            再来一单
+            {{i18n['order.reorder']}}
           </view>
         </view>
       </view>

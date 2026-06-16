@@ -1,6 +1,7 @@
 const i18n = require('../../utils/i18n.js')
 const exchangeRate = require('../../utils/exchangeRate.js')
 const storage = require('../../utils/storage.js')
+const { isOnline } = require('../../utils/network.js')
 
 Page({
   data: {
@@ -188,7 +189,7 @@ Page({
       orderNo,
       cnyAmount,
       selectedCurrency,
-      exchangeRate,
+      exchangeRate: currentRate,
       foreignRequired,
       foreignReceivedNum,
       cnyReceived,
@@ -202,23 +203,44 @@ Page({
     })
 
     setTimeout(() => {
+      const rate = exchangeRate.getRate(selectedCurrency)
+      const payType = selectedCurrency === 'CNY' ? 'CASH' : 'FOREIGN_CASH'
+
       const paymentRecord = {
         id: Date.now().toString(),
         orderId,
         orderNo,
-        payType: selectedCurrency === 'CNY' ? 'CASH' : 'FOREIGN_CASH',
+        payType,
         payAmount: cnyAmount,
         foreignCurrency: selectedCurrency,
-        exchangeRate,
-        foreignRequired,
+        foreignRate: rate ? rate.rateToCny : null,
+        foreignAmount: foreignRequired,
         foreignReceived: foreignReceivedNum,
-        foreignChange,
+        foreignChange: foreignChange,
         cnyChange,
         payTime: Date.now(),
         status: 'success'
       }
 
       storage.addPaymentRecord(paymentRecord)
+
+      const orders = storage.getOrders()
+      const order = orders.find(item => item.id === orderId)
+      if (order) {
+        order.status = 'paid'
+        order.payType = payType
+        order.foreignCurrency = selectedCurrency
+        order.foreignRate = rate ? rate.rateToCny : null
+        order.foreignAmount = foreignRequired
+        order.foreignReceived = foreignReceivedNum
+        order.foreignChange = foreignChange
+        order.updateTime = Date.now()
+        storage.setOrders(orders)
+      }
+
+      if (isOnline()) {
+        this.submitPaymentToServer(paymentRecord)
+      }
 
       wx.hideLoading()
 
@@ -228,15 +250,40 @@ Page({
         showCancel: false,
         confirmText: i18n.t('common.confirm'),
         success: () => {
-          const pages = getCurrentPages()
-          if (pages.length > 1) {
-            wx.navigateBack()
-          } else {
-            wx.switchTab({ url: '/pages/index/index' })
-          }
+          wx.redirectTo({
+            url: `/pages/order-detail/order-detail?id=${orderId}`
+          })
         }
       })
-    }, 1000)
+    }, 500)
+  },
+
+  submitPaymentToServer(paymentRecord) {
+    const app = getApp()
+    if (!app || !app.globalData || !app.globalData.baseUrl) return
+
+    wx.request({
+      url: `${app.globalData.baseUrl}/api/order/${paymentRecord.orderId}/pay`,
+      method: 'POST',
+      data: {
+        payType: paymentRecord.payType,
+        payAmount: paymentRecord.payAmount,
+        foreignCurrency: paymentRecord.foreignCurrency,
+        foreignRate: paymentRecord.foreignRate,
+        foreignAmount: paymentRecord.foreignAmount,
+        foreignReceived: paymentRecord.foreignReceived,
+        foreignChange: paymentRecord.foreignChange
+      },
+      timeout: 10000,
+      success: (res) => {
+        if (res && res.data && res.data.code === 0) {
+          console.log('Foreign payment submitted to server')
+        }
+      },
+      fail: () => {
+        console.warn('Failed to submit foreign payment to server, will sync later')
+      }
+    })
   },
 
   buildSuccessMessage() {

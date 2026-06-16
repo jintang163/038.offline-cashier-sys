@@ -1,5 +1,6 @@
 package com.cashier.server.entity.system;
 
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.cashier.server.common.BaseEntity;
 import lombok.Data;
@@ -29,5 +30,6 @@ public class ExchangeRate extends BaseEntity {
 
     private String source;
 
-    private Integer status;
+    @TableField("is_enabled")
+    private Integer isEnabled;
 }
