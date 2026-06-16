@@ -193,7 +193,10 @@ public class ElectronicInvoiceServiceImpl extends ServiceImpl<ElectronicInvoiceM
 
             ElectronicInvoice existing = getInvoiceByNo(dto.getInvoiceNo());
             Integer oldTaxControlStatus = existing != null ? existing.getTaxControlStatus() : null;
-            Integer oldSyncStatus = existing != null ? existing.getSyncStatus() : null;
+
+            invoice.setSyncStatus(1);
+            invoice.setSyncTime(LocalDateTime.now());
+            invoice.setSyncError(null);
 
             if (existing != null) {
                 invoice.setId(existing.getId());
@@ -202,9 +205,6 @@ public class ElectronicInvoiceServiceImpl extends ServiceImpl<ElectronicInvoiceM
                 }
                 if (dto.getQrcodeToken() == null || dto.getQrcodeToken().isEmpty()) {
                     invoice.setQrcodeToken(existing.getQrcodeToken());
-                }
-                if (dto.getSyncStatus() == null) {
-                    invoice.setSyncStatus(existing.getSyncStatus());
                 }
                 if (dto.getTaxControlStatus() == null) {
                     invoice.setTaxControlStatus(existing.getTaxControlStatus());
@@ -216,9 +216,6 @@ public class ElectronicInvoiceServiceImpl extends ServiceImpl<ElectronicInvoiceM
                 }
                 if (invoice.getQrcodeToken() == null || invoice.getQrcodeToken().isEmpty()) {
                     invoice.setQrcodeToken(generateQrcodeToken());
-                }
-                if (dto.getSyncStatus() == null) {
-                    invoice.setSyncStatus(0);
                 }
                 if (dto.getTaxControlStatus() == null) {
                     invoice.setTaxControlStatus(0);
@@ -235,12 +232,10 @@ public class ElectronicInvoiceServiceImpl extends ServiceImpl<ElectronicInvoiceM
                 this.save(invoice);
             }
 
-            Integer newSyncStatus = invoice.getSyncStatus();
             Integer newTaxControlStatus = invoice.getTaxControlStatus();
 
-            if (newSyncStatus != null && newSyncStatus == 1
-                && newTaxControlStatus != null && newTaxControlStatus == 0
-                && (oldSyncStatus == null || oldSyncStatus != 1 || oldTaxControlStatus == null || oldTaxControlStatus == 0)) {
+            if (newTaxControlStatus != null && (newTaxControlStatus == 0 || newTaxControlStatus == 3)
+                && (oldTaxControlStatus == null || oldTaxControlStatus == 0 || oldTaxControlStatus == 3)) {
 
                 ElectronicInvoice savedInvoice = getInvoiceByNo(dto.getInvoiceNo());
                 if (savedInvoice != null) {
@@ -323,16 +318,40 @@ public class ElectronicInvoiceServiceImpl extends ServiceImpl<ElectronicInvoiceM
             return true;
         }
 
+        invoice.setTaxControlStatus(1);
+        this.updateById(invoice);
+
         try {
             Map<String, Object> response = taxControlApiClient.issueInvoice(invoice);
 
-            invoice.setInvoiceCode((String) response.get("invoiceCode"));
-            invoice.setInvoiceNumber((String) response.get("invoiceNumber"));
-            invoice.setTaxControlSerialNo((String) response.get("taxControlSerialNo"));
-            invoice.setTaxControlRequestId((String) response.get("taxControlRequestId"));
+            Object data = response.get("data");
+            Map<String, Object> dataMap = null;
+            if (data instanceof Map) {
+                dataMap = (Map<String, Object>) data;
+            }
+
+            if (dataMap != null) {
+                invoice.setInvoiceCode((String) dataMap.getOrDefault("invoiceCode", dataMap.get("fpdm")));
+                invoice.setInvoiceNumber((String) dataMap.getOrDefault("invoiceNumber", dataMap.get("fphm")));
+                invoice.setTaxControlSerialNo((String) dataMap.getOrDefault("taxControlSerialNo", dataMap.get("kplsh")));
+                invoice.setTaxControlRequestId((String) dataMap.getOrDefault("taxControlRequestId", dataMap.get("requestId")));
+                Object pdfUrl = dataMap.getOrDefault("invoicePdfUrl", dataMap.get("pdfUrl"));
+                if (pdfUrl != null) {
+                    invoice.setInvoicePdfUrl(pdfUrl.toString());
+                }
+            } else {
+                invoice.setInvoiceCode((String) response.get("invoiceCode"));
+                invoice.setInvoiceNumber((String) response.get("invoiceNumber"));
+                invoice.setTaxControlSerialNo((String) response.get("taxControlSerialNo"));
+                invoice.setTaxControlRequestId((String) response.get("taxControlRequestId"));
+                if (response.get("invoicePdfUrl") != null) {
+                    invoice.setInvoicePdfUrl(response.get("invoicePdfUrl").toString());
+                }
+            }
+
             invoice.setTaxControlTime(LocalDateTime.now());
             invoice.setTaxControlStatus(2);
-            invoice.setInvoiceStatus(1);
+            invoice.setInvoiceStatus(2);
             invoice.setTaxControlError(null);
             invoice.setTaxControlAttempts((invoice.getTaxControlAttempts() != null ? invoice.getTaxControlAttempts() : 0) + 1);
 
@@ -373,7 +392,7 @@ public class ElectronicInvoiceServiceImpl extends ServiceImpl<ElectronicInvoiceM
             throw new BusinessException("发票不存在");
         }
 
-        if (invoice.getPushStatus() != null && invoice.getPushStatus() == 1) {
+        if (invoice.getPushStatus() != null && invoice.getPushStatus() == 2) {
             log.info("发票已推送，无需重复推送，invoiceNo={}", invoice.getInvoiceNo());
             return true;
         }
@@ -383,7 +402,7 @@ public class ElectronicInvoiceServiceImpl extends ServiceImpl<ElectronicInvoiceM
 
         if ((buyerPhone == null || buyerPhone.isEmpty()) && (buyerEmail == null || buyerEmail.isEmpty())) {
             log.warn("缺少接收方联系方式，无法推送发票，invoiceNo={}", invoice.getInvoiceNo());
-            invoice.setPushStatus(2);
+            invoice.setPushStatus(3);
             invoice.setPushError("缺少接收方手机号或邮箱");
             invoice.setPushAttempts((invoice.getPushAttempts() != null ? invoice.getPushAttempts() : 0) + 1);
             this.updateById(invoice);
@@ -392,10 +411,10 @@ public class ElectronicInvoiceServiceImpl extends ServiceImpl<ElectronicInvoiceM
 
         try {
             Map<String, Object> response = taxControlApiClient.pushInvoiceToCustomer(
-                invoice.getInvoiceNo(), buyerPhone, buyerEmail
+                invoice.getInvoiceNo(), buyerPhone, buyerEmail, invoice.getInvoicePdfUrl()
             );
 
-            invoice.setPushStatus(1);
+            invoice.setPushStatus(2);
             invoice.setPushTime(LocalDateTime.now());
             invoice.setPushError(null);
             invoice.setPushAttempts((invoice.getPushAttempts() != null ? invoice.getPushAttempts() : 0) + 1);
@@ -405,14 +424,14 @@ public class ElectronicInvoiceServiceImpl extends ServiceImpl<ElectronicInvoiceM
             return true;
         } catch (BusinessException e) {
             log.error("电子发票推送顾客失败，invoiceNo={}", invoice.getInvoiceNo(), e);
-            invoice.setPushStatus(2);
+            invoice.setPushStatus(3);
             invoice.setPushError(e.getMessage());
             invoice.setPushAttempts((invoice.getPushAttempts() != null ? invoice.getPushAttempts() : 0) + 1);
             this.updateById(invoice);
             return false;
         } catch (Exception e) {
             log.error("电子发票推送顾客系统异常，invoiceNo={}", invoice.getInvoiceNo(), e);
-            invoice.setPushStatus(2);
+            invoice.setPushStatus(3);
             invoice.setPushError("系统异常: " + e.getMessage());
             invoice.setPushAttempts((invoice.getPushAttempts() != null ? invoice.getPushAttempts() : 0) + 1);
             this.updateById(invoice);
@@ -514,5 +533,16 @@ public class ElectronicInvoiceServiceImpl extends ServiceImpl<ElectronicInvoiceM
         String datetime = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
         String random = String.format("%04d", new java.util.Random().nextInt(10000));
         return "WAL" + datetime + random;
+    }
+
+    @Override
+    public List<ElectronicInvoice> getInvoicesByNos(List<String> invoiceNos) {
+        if (invoiceNos == null || invoiceNos.isEmpty()) {
+            return new ArrayList<>();
+        }
+        return this.list(
+            new LambdaQueryWrapper<ElectronicInvoice>()
+                .in(ElectronicInvoice::getInvoiceNo, invoiceNos)
+        );
     }
 }

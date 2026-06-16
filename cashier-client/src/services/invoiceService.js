@@ -354,7 +354,12 @@ class InvoiceService {
         
         synced += batch.length
 
-        await this._refreshInvoiceStatusFromServer(batch.map(r => r.invoice_no))
+        if (result && result.data && result.data.synced_invoices) {
+          await db.batchSaveInvoices(result.data.synced_invoices)
+          console.log('发票状态已从服务端同步结果刷新')
+        } else {
+          await this._refreshInvoiceStatusFromServer(batch.map(r => r.invoice_no))
+        }
 
       } catch (error) {
         console.error(`发票批次同步失败:`, error)

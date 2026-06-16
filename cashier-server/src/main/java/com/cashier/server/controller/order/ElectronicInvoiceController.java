@@ -13,8 +13,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @Slf4j
 @RestController
@@ -110,7 +112,18 @@ public class ElectronicInvoiceController {
         log.info("批量同步发票，共{}条", dtos != null ? dtos.size() : 0);
         try {
             boolean success = electronicInvoiceService.batchSaveOrUpdateByDTO(dtos);
-            return Result.success(Map.of("success", success));
+
+            List<String> invoiceNos = dtos.stream()
+                .map(InvoiceSyncDTO::getInvoiceNo)
+                .filter(no -> no != null && !no.isEmpty())
+                .collect(Collectors.toList());
+
+            List<ElectronicInvoice> syncedInvoices = electronicInvoiceService.getInvoicesByNos(invoiceNos);
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("success", success);
+            result.put("synced_invoices", syncedInvoices);
+            return Result.success(result);
         } catch (Exception e) {
             log.error("批量同步发票失败", e);
             return Result.fail("批量同步发票失败: " + e.getMessage());

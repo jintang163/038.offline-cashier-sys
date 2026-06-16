@@ -36,3 +36,18 @@ erp:
     timeout: ${ERP_TIMEOUT:30000}
     retry-times: ${ERP_RETRY_TIMES:3}
     retry-interval: ${ERP_RETRY_INTERVAL:5000}
+
+tax:
+  control:
+    base-url: ${TAX_CONTROL_BASE_URL:http://tax-control.example.com/api}
+    app-key: ${TAX_CONTROL_APP_KEY:your_tax_app_key}
+    app-secret: ${TAX_CONTROL_APP_SECRET:your_tax_app_secret}
+    seller-tax-no: ${TAX_CONTROL_SELLER_TAX_NO:91110000000000000X}
+    seller-name: ${TAX_CONTROL_SELLER_NAME:}
+    seller-address: ${TAX_CONTROL_SELLER_ADDRESS:}
+    seller-bank: ${TAX_CONTROL_SELLER_BANK:}
+    seller-phone: ${TAX_CONTROL_SELLER_PHONE:}
+    timeout: ${TAX_CONTROL_TIMEOUT:30000}
+    retry-times: ${TAX_CONTROL_RETRY_TIMES:3}
+    retry-interval: ${TAX_CONTROL_RETRY_INTERVAL:5000}
+    default-tax-rate: ${TAX_CONTROL_DEFAULT_TAX_RATE:0.01}

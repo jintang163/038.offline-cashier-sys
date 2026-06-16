@@ -6,6 +6,7 @@ import Cashier from './pages/Cashier'
 import Orders from './pages/Orders'
 import DailyReport from './pages/DailyReport'
 import Settings from './pages/Settings'
+import InvoiceScan from './pages/InvoiceScan'
 import ProtectedRoute from './components/ProtectedRoute'
 import db from './utils/db'
 import syncService from './services/syncService'
@@ -62,6 +63,10 @@ function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route
+        path="/invoice/scan"
+        element={<InvoiceScan />}
+      />
       <Route
         path="/cashier"
         element={

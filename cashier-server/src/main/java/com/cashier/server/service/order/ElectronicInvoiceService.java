@@ -44,4 +44,6 @@ public interface ElectronicInvoiceService extends IService<ElectronicInvoice> {
     String generateQrcodeToken();
 
     BigDecimal[] calculateTaxAmount(BigDecimal totalAmount, BigDecimal taxRate);
+
+    List<ElectronicInvoice> getInvoicesByNos(List<String> invoiceNos);
 }

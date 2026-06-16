@@ -36,3 +36,18 @@ erp:
     timeout: 30000
     retry-times: 3
     retry-interval: 5000
+
+tax:
+  control:
+    base-url: http://tax-control.example.com/api
+    app-key: your_tax_app_key
+    app-secret: your_tax_app_secret
+    seller-tax-no: 91110000000000000X
+    seller-name: 示例餐饮管理有限公司
+    seller-address: 北京市朝阳区xx路xx号
+    seller-bank: 中国工商银行xx支行
+    seller-phone: 010-12345678
+    timeout: 30000
+    retry-times: 3
+    retry-interval: 5000
+    default-tax-rate: 0.01

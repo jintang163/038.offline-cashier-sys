@@ -103,12 +103,19 @@ public class TaxControlApiClient {
     }
 
     public Map<String, Object> pushInvoiceToCustomer(String invoiceNo, String phone, String email) {
+        return pushInvoiceToCustomer(invoiceNo, phone, email, null);
+    }
+
+    public Map<String, Object> pushInvoiceToCustomer(String invoiceNo, String phone, String email, String pdfUrl) {
         log.info("开始调用税控接口推送发票给顾客, invoiceNo={}, phone={}, email={}", invoiceNo, phone, email);
         
         Map<String, Object> requestData = new HashMap<>();
         requestData.put("invoiceNo", invoiceNo);
         requestData.put("phone", phone);
         requestData.put("email", email);
+        if (pdfUrl != null && !pdfUrl.isEmpty()) {
+            requestData.put("pdfUrl", pdfUrl);
+        }
 
         Map<String, Object> response = executeWithRetry("/invoice/push", requestData, HttpMethod.POST);
         log.info("税控发票推送接口返回, invoiceNo={}, response={}", invoiceNo, response);
