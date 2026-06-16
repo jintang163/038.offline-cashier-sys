@@ -123,7 +123,9 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public boolean pay(Long orderId, String payType, BigDecimal payAmount, String transactionId) {
+    public boolean pay(Long orderId, String payType, BigDecimal payAmount, String transactionId,
+                       String foreignCurrency, BigDecimal foreignRate, BigDecimal foreignAmount,
+                       BigDecimal foreignReceived, BigDecimal foreignChange) {
         Order order = getById(orderId);
         if (order == null || order.getPayStatus() == 1) {
             return false;
@@ -137,6 +139,11 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
         payment.setPaymentNo(paymentNo);
         payment.setPayType(payType);
         payment.setPayAmount(payAmount);
+        payment.setForeignCurrency(foreignCurrency);
+        payment.setForeignRate(foreignRate);
+        payment.setForeignAmount(foreignAmount);
+        payment.setForeignReceived(foreignReceived);
+        payment.setForeignChange(foreignChange);
         payment.setPayStatus(1);
         payment.setPayTime(LocalDateTime.now());
         payment.setTransactionId(transactionId);

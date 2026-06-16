@@ -1,8 +1,17 @@
 <view class="order-confirm-page">
+  <view class="header-actions">
+    <view class="back-btn" bindtap="onGoBack">
+      <text>←</text>
+    </view>
+    <view class="settings-btn" bindtap="onGoToSettings">
+      <text>⚙️</text>
+    </view>
+  </view>
+
   <view class="section">
-    <view class="section-title">就餐信息</view>
+    <view class="section-title">{{i18n['order.createOrder']}}</view>
     <view class="form-item">
-      <text class="form-label">桌号</text>
+      <text class="form-label">{{i18n['order.tableNumber']}}</text>
       <picker bindchange="onTableChange" value="{{tablePickerIndex}}" range="{{tableOptions}}">
         <view class="form-picker">
           <text class="{{tableNumber ? '' : 'placeholder'}}">{{tableNumber || '请选择桌号'}}</text>
@@ -11,7 +20,7 @@
       </picker>
     </view>
     <view class="form-item">
-      <text class="form-label">用餐人数</text>
+      <text class="form-label">{{i18n['order.peopleCount']}}</text>
       <view class="form-value">
         <input
           class="people-input"
@@ -24,7 +33,7 @@
       </view>
     </view>
     <view class="form-item">
-      <text class="form-label">备注</text>
+      <text class="form-label">{{i18n['order.remark']}}</text>
       <input
         class="form-input"
         placeholder="请输入备注（选填）"
@@ -42,7 +51,7 @@
         <image class="goods-image" src="{{item.image}}" mode="aspectFill"></image>
         <view class="goods-info">
           <view class="goods-name text-ellipsis">{{item.name}}</view>
-          <view class="goods-price">{{item.price}}</view>
+          <view class="goods-price">¥{{item.price}}</view>
         </view>
         <view class="goods-quantity">x{{item.quantity}}</view>
       </view>
@@ -52,7 +61,11 @@
   <view class="section price-section">
     <view class="price-row">
       <text class="price-label">商品合计</text>
-      <text class="price-value">{{cartTotal}}</text>
+      <text class="price-value">¥{{cartTotal}}</text>
+    </view>
+    <view class="price-row" wx:if="{{selectedCurrency !== 'CNY' && foreignAmount > 0}}">
+      <text class="price-label">{{selectedCurrency}} 合计</text>
+      <text class="price-value">{{currencySymbol}}{{foreignAmount}}</text>
     </view>
     <view class="price-row">
       <text class="price-label">配送费</text>
@@ -60,18 +73,55 @@
     </view>
     <view class="divider"></view>
     <view class="price-row total-row">
-      <text class="price-label">实付金额</text>
-      <text class="total-price">{{cartTotal}}</text>
+      <text class="price-label">{{i18n['order.totalAmount']}}</text>
+      <text class="total-price">¥{{cartTotal}}</text>
+    </view>
+    <view class="currency-info" wx:if="{{selectedCurrency !== 'CNY'}}">
+      <text class="currency-tip">1 {{selectedCurrency}} = ¥{{currentRate}}</text>
     </view>
   </view>
 
   <view class="submit-bar">
     <view class="submit-total">
-      <text class="total-label">合计：</text>
-      <text class="total-amount">{{cartTotal}}</text>
+      <text class="total-label">{{i18n['common.total']}}：</text>
+      <text class="total-amount">¥{{cartTotal}}</text>
+      <text class="foreign-total" wx:if="{{selectedCurrency !== 'CNY'}}">
+        ({{currencySymbol}}{{foreignAmount}})</text>
     </view>
     <view class="submit-btn {{isSubmitting ? 'disabled' : ''}}" bindtap="onSubmitOrder">
-      {{isSubmitting ? '提交中...' : '提交订单'}}
+      {{isSubmitting ? '提交中...' : i18n['common.confirm']}}
+    </view>
+  </view>
+
+  <view class="pay-options-mask" wx:if="{{showPayOptions}}" bindtap="onClosePayOptions">
+    <view class="pay-options" catchtap="">
+      <view class="pay-options-header">
+        <text class="pay-options-title">{{i18n['payment.payMethod']}}</text>
+        <view class="pay-options-close" bindtap="onClosePayOptions">✕</view>
+      </view>
+      <view class="pay-options-list">
+        <view class="pay-option-item" bindtap="onSelectPayMethod" data-method="cash">
+          <text class="pay-option-icon">💴</text>
+          <text class="pay-option-name">{{i18n['payment.cashPayment']}}</text>
+          <text class="pay-option-arrow">></text>
+        </view>
+        <view class="pay-option-item" bindtap="onSelectPayMethod" data-method="foreign">
+          <text class="pay-option-icon">💱</text>
+          <text class="pay-option-name">{{i18n['payment.foreignCurrency']}}</text>
+          <text class="pay-option-desc">{{i18n['payment.selectCurrency']}}</text>
+          <text class="pay-option-arrow">></text>
+        </view>
+        <view class="pay-option-item" bindtap="onSelectPayMethod" data-method="wechat">
+          <text class="pay-option-icon">💚</text>
+          <text class="pay-option-name">微信支付</text>
+          <text class="pay-option-arrow">></text>
+        </view>
+        <view class="pay-option-item" bindtap="onSelectPayMethod" data-method="alipay">
+          <text class="pay-option-icon">💙</text>
+          <text class="pay-option-name">支付宝</text>
+          <text class="pay-option-arrow">></text>
+        </view>
+      </view>
     </view>
   </view>
 </view>

@@ -25,7 +25,9 @@ public interface OrderService extends IService<Order> {
 
     Order createOrder(List<OrderItem> items, Long cashierId, String cashierName, String remark);
 
-    boolean pay(Long orderId, String payType, BigDecimal payAmount, String transactionId);
+    boolean pay(Long orderId, String payType, BigDecimal payAmount, String transactionId,
+               String foreignCurrency, BigDecimal foreignRate, BigDecimal foreignAmount,
+               BigDecimal foreignReceived, BigDecimal foreignChange);
 
     boolean updateSyncStatus(Long orderId, Integer syncStatus, String errorMessage);
 

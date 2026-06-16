@@ -27,6 +27,16 @@ public class OrderPayment extends BaseEntity {
 
     private BigDecimal payAmount;
 
+    private String foreignCurrency;
+
+    private BigDecimal foreignRate;
+
+    private BigDecimal foreignAmount;
+
+    private BigDecimal foreignReceived;
+
+    private BigDecimal foreignChange;
+
     private Integer payStatus;
 
     private LocalDateTime payTime;

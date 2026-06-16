@@ -1,18 +1,43 @@
 const storage = require('./utils/storage.js')
 const { checkNetwork } = require('./utils/network.js')
+const i18n = require('./utils/i18n.js')
+const exchangeRate = require('./utils/exchangeRate.js')
 
 App({
   globalData: {
     isOnline: true,
     cartCount: 0,
-    baseUrl: 'https://api.example.com'
+    baseUrl: 'https://api.example.com',
+    currentLanguage: 'zh-CN',
+    currentCurrency: 'CNY'
   },
 
   onLaunch() {
+    this.initI18n()
+    this.initExchangeRate()
     this.initCartCount()
     this.checkNetworkStatus()
     this.initGoodsCache()
     this.listenNetworkChange()
+  },
+
+  initI18n() {
+    i18n.init()
+    this.globalData.currentLanguage = i18n.getLanguage()
+    i18n.onChange((lang) => {
+      this.globalData.currentLanguage = lang
+    })
+  },
+
+  initExchangeRate() {
+    exchangeRate.init()
+    this.globalData.currentCurrency = exchangeRate.getSelectedCurrency()
+
+    if (this.globalData.isOnline) {
+      exchangeRate.syncRatesFromServer().catch(e => {
+        console.warn('Sync rates from server failed', e)
+      })
+    }
   },
 
   initCartCount() {
@@ -27,12 +52,22 @@ App({
   checkNetworkStatus() {
     checkNetwork().then(isOnline => {
       this.globalData.isOnline = isOnline
+      if (isOnline) {
+        exchangeRate.syncRatesFromServer().catch(e => {
+          console.warn('Sync rates from server failed', e)
+        })
+      }
     })
   },
 
   listenNetworkChange() {
     wx.onNetworkStatusChange(res => {
       this.globalData.isOnline = res.isConnected
+      if (res.isConnected && exchangeRate.isCacheExpired()) {
+        exchangeRate.syncRatesFromServer().catch(e => {
+          console.warn('Sync rates from server failed', e)
+        })
+      }
       if (this.onlineCallback) {
         this.onlineCallback(res.isConnected)
       }

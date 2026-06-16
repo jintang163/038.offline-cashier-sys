@@ -66,10 +66,18 @@ public class OrderController {
     @PostMapping("/{id}/pay")
     public Result<Void> pay(
             @PathVariable Long id,
-            @RequestParam String payType,
-            @RequestParam BigDecimal payAmount,
-            @RequestParam(required = false) String transactionId) {
-        orderService.pay(id, payType, payAmount, transactionId);
+            @RequestBody Map<String, Object> params) {
+        String payType = params.get("payType") != null ? params.get("payType").toString() : null;
+        BigDecimal payAmount = params.get("payAmount") != null ? new BigDecimal(params.get("payAmount").toString()) : null;
+        String transactionId = params.get("transactionId") != null ? params.get("transactionId").toString() : null;
+        String foreignCurrency = params.get("foreignCurrency") != null ? params.get("foreignCurrency").toString() : null;
+        BigDecimal foreignRate = params.get("foreignRate") != null ? new BigDecimal(params.get("foreignRate").toString()) : null;
+        BigDecimal foreignAmount = params.get("foreignAmount") != null ? new BigDecimal(params.get("foreignAmount").toString()) : null;
+        BigDecimal foreignReceived = params.get("foreignReceived") != null ? new BigDecimal(params.get("foreignReceived").toString()) : null;
+        BigDecimal foreignChange = params.get("foreignChange") != null ? new BigDecimal(params.get("foreignChange").toString()) : null;
+        
+        orderService.pay(id, payType, payAmount, transactionId, 
+                foreignCurrency, foreignRate, foreignAmount, foreignReceived, foreignChange);
         return Result.success();
     }
 

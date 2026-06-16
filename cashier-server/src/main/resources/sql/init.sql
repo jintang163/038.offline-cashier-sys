@@ -487,3 +487,42 @@ INSERT INTO print_rule (rule_code, rule_name, category_id, category_name, printe
 INSERT INTO print_template (template_code, template_name, template_type, paper_width, font_size, header, footer, is_default, status, create_time, update_time) VALUES
 ('TPL_KITCHEN_DEFAULT', '厨房小票默认模板', 'kitchen', 58, 12, '{shop_name}', '--- 厨房联 ---', 1, 1, NOW(), NOW()),
 ('TPL_RECEIPT_DEFAULT', '收银小票默认模板', 'receipt', 80, 12, '{shop_name}', '谢谢惠顾', 1, 1, NOW(), NOW());
+
+-- 汇率表
+DROP TABLE IF EXISTS exchange_rate;
+CREATE TABLE exchange_rate (
+    id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    currency_code VARCHAR(10) NOT NULL COMMENT '货币代码：USD JPY EUR GBP KRW HKD TWD THB',
+    currency_name VARCHAR(50) NOT NULL COMMENT '货币名称',
+    currency_symbol VARCHAR(10) DEFAULT NULL COMMENT '货币符号',
+    rate_to_cny DECIMAL(20,6) DEFAULT 1.000000 COMMENT '对人民币汇率：1外币=?人民币',
+    rate_from_cny DECIMAL(20,6) DEFAULT 1.000000 COMMENT '人民币对该货币汇率：1人民币=?外币',
+    rate_time DATETIME DEFAULT NULL COMMENT '汇率时间',
+    source VARCHAR(50) DEFAULT NULL COMMENT '汇率来源',
+    is_enabled TINYINT DEFAULT 1 COMMENT '是否启用：0禁用 1启用',
+    create_time DATETIME DEFAULT NULL COMMENT '创建时间',
+    update_time DATETIME DEFAULT NULL COMMENT '更新时间',
+    is_deleted TINYINT DEFAULT 0 COMMENT '逻辑删除：0未删除 1已删除',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_currency_code (currency_code),
+    KEY idx_is_enabled (is_enabled)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='汇率表';
+
+-- 初始汇率数据
+INSERT INTO exchange_rate (currency_code, currency_name, currency_symbol, rate_to_cny, rate_from_cny, rate_time, source, is_enabled, create_time, update_time) VALUES
+('CNY', '人民币', '¥', 1.000000, 1.000000, NOW(), 'LOCAL', 1, NOW(), NOW()),
+('USD', '美元', '$', 7.250000, 0.137931, NOW(), 'LOCAL', 1, NOW(), NOW()),
+('JPY', '日元', '¥', 0.047500, 21.052632, NOW(), 'LOCAL', 1, NOW(), NOW()),
+('EUR', '欧元', '€', 7.850000, 0.127389, NOW(), 'LOCAL', 1, NOW(), NOW()),
+('GBP', '英镑', '£', 9.200000, 0.108696, NOW(), 'LOCAL', 1, NOW(), NOW()),
+('KRW', '韩元', '₩', 0.005400, 185.185185, NOW(), 'LOCAL', 1, NOW(), NOW()),
+('HKD', '港币', 'HK$', 0.928000, 1.077586, NOW(), 'LOCAL', 1, NOW(), NOW()),
+('TWD', '新台币', 'NT$', 0.230000, 4.347826, NOW(), 'LOCAL', 1, NOW(), NOW()),
+('THB', '泰铢', '฿', 0.205000, 4.878049, NOW(), 'LOCAL', 1, NOW(), NOW());
+
+-- 订单支付流水表扩展 - 外币支付字段
+ALTER TABLE order_payment ADD COLUMN foreign_currency VARCHAR(10) DEFAULT NULL COMMENT '外币代码' AFTER pay_amount;
+ALTER TABLE order_payment ADD COLUMN foreign_rate DECIMAL(20,6) DEFAULT NULL COMMENT '汇率' AFTER foreign_currency;
+ALTER TABLE order_payment ADD COLUMN foreign_amount DECIMAL(10,2) DEFAULT NULL COMMENT '外币金额' AFTER foreign_rate;
+ALTER TABLE order_payment ADD COLUMN foreign_received DECIMAL(10,2) DEFAULT NULL COMMENT '外币实收金额' AFTER foreign_amount;
+ALTER TABLE order_payment ADD COLUMN foreign_change DECIMAL(10,2) DEFAULT NULL COMMENT '外币找零金额' AFTER foreign_received;

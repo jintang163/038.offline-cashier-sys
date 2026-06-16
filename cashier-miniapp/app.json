@@ -8,7 +8,9 @@
     "pages/stock-check/task-list",
     "pages/stock-check/task-detail",
     "pages/stock-check/scan-check",
-    "pages/stock-check/upload"
+    "pages/stock-check/upload",
+    "pages/settings/settings",
+    "pages/foreign-payment/foreign-payment"
   ],
   "window": {
     "backgroundTextStyle": "light",

@@ -1,6 +1,8 @@
 const app = getApp()
 const storage = require('../../utils/storage.js')
 const cart = require('../../utils/cart.js')
+const i18n = require('../../utils/i18n.js')
+const exchangeRate = require('../../utils/exchangeRate.js')
 
 Page({
   data: {
@@ -9,19 +11,64 @@ Page({
     currentCategoryId: 0,
     cartCount: 0,
     cartTotal: 0,
+    cartTotalForeign: 0,
     isOnline: true,
-    scrollToView: ''
+    scrollToView: '',
+    currentLanguage: 'zh-CN',
+    currentCurrency: 'CNY',
+    currencySymbol: '¥',
+    i18n: {}
   },
 
   onLoad() {
     this.initData()
+    this.loadI18n()
+    this.loadCurrencyInfo()
+
+    this.unsubscribeLangChange = i18n.onChange(() => {
+      this.loadI18n()
+      this.loadCurrencyInfo()
+    })
+  },
+
+  onUnload() {
+    if (this.unsubscribeLangChange) {
+      this.unsubscribeLangChange()
+    }
   },
 
   onShow() {
     this.updateCartInfo()
     this.updateGoodsQuantities()
     this.setData({
-      isOnline: app.globalData.isOnline
+      isOnline: app.globalData.isOnline,
+      currentLanguage: i18n.getLanguage(),
+      currentCurrency: exchangeRate.getSelectedCurrency()
+    })
+  },
+
+  loadI18n() {
+    this.setData({
+      i18n: i18n.getPageTranslations([
+        'common.settings',
+        'common.language',
+        'common.currency',
+        'common.total',
+        'message.cartEmpty'
+      ])
+    })
+
+    wx.setNavigationBarTitle({
+      title: i18n.t('common.home') === 'Home' ? '扫码点餐' : '扫码点餐'
+    })
+  },
+
+  loadCurrencyInfo() {
+    const currency = exchangeRate.getSelectedCurrency()
+    const rate = exchangeRate.getRate(currency)
+    this.setData({
+      currentCurrency: currency,
+      currencySymbol: rate ? rate.symbol : '¥'
     })
   },
 
@@ -63,9 +110,12 @@ Page({
   },
 
   updateCartInfo() {
+    const cnyTotal = cart.getCartTotal()
+    const foreignTotal = exchangeRate.convertToSelectedCurrency(cnyTotal)
     this.setData({
       cartCount: cart.getCartCount(),
-      cartTotal: cart.getCartTotal()
+      cartTotal: cnyTotal,
+      cartTotalForeign: foreignTotal
     })
   },
 
@@ -100,13 +150,19 @@ Page({
   onGoToCart() {
     if (this.data.cartCount === 0) {
       wx.showToast({
-        title: '购物车是空的',
+        title: i18n.t('message.cartEmpty'),
         icon: 'none'
       })
       return
     }
     wx.switchTab({
       url: '/pages/cart/cart'
+    })
+  },
+
+  onGoToSettings() {
+    wx.navigateTo({
+      url: '/pages/settings/settings'
     })
   },
 

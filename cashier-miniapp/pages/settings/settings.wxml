@@ -1,0 +1,80 @@
+<view class="container">
+  <view class="header">
+    <view class="network-status {{networkStatus ? 'online' : 'offline'}}">
+      <text>{{networkStatus ? '📡 ' : '📵 '}}{{networkStatus ? i18n['network.online'] : i18n['network.offline']}}</text>
+    </view>
+    <view class="header-title">{{i18n['common.settings']}}</view>
+  </view>
+
+  <view class="section">
+    <view class="section-header">
+      <text class="section-icon">🌐</text>
+      <text class="section-title">{{i18n['common.language']}}</text>
+    </view>
+    <view class="option-list">
+      <view
+        class="option-item {{item.selected ? 'selected' : ''}}"
+        wx:for="{{languages}}"
+        wx:key="code"
+        bindtap="onSelectLanguage"
+        data-code="{{item.code}}"
+      >
+        <view class="option-info">
+          <text class="option-name">{{item.name}}</text>
+          <text class="option-code">{{item.code}}</text>
+        </view>
+        <view class="option-check" wx:if="{{item.selected}}">✓</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="section">
+    <view class="section-header">
+      <text class="section-icon">💱</text>
+      <text class="section-title">{{i18n['common.currency']}}</text>
+    </view>
+    <view class="currency-info" wx:if="{{currentCurrency}}">
+      <text class="currency-label">{{i18n['payment.selectCurrency']}}:</text>
+      <text class="currency-value">{{currentCurrency}}</text>
+    </view>
+    <view class="option-list">
+      <view
+        class="option-item {{item.selected ? 'selected' : ''}}"
+        wx:for="{{currencies}}"
+        wx:key="code"
+        bindtap="onSelectCurrency"
+        data-code="{{item.code}}"
+      >
+        <view class="option-info">
+          <text class="option-symbol">{{item.symbol}}</text>
+          <text class="option-name">{{item.name}}</text>
+          <text class="option-code">{{item.code}}</text>
+        </view>
+        <view class="option-rate">
+          <text class="rate-label">1 CNY = </text>
+          <text class="rate-value">{{item.rateFromCny}}</text>
+        </view>
+        <view class="option-check" wx:if="{{item.selected}}">✓</view>
+      </view>
+    </view>
+    <view class="sync-rates" bindtap="onSyncRates">
+      <text class="sync-icon">🔄</text>
+      <text class="sync-text">{{i18n['payment.exchangeRate']}} - {{networkStatus ? '点击同步' : '离线模式'}}</text>
+    </view>
+    <view class="cache-info" wx:if="{{rateCacheInfo.loaded}}">
+      <text>缓存货币: {{rateCacheInfo.count}}种</text>
+      <text class="cache-expired" wx:if="{{rateCacheInfo.expired}}">（已过期）</text>
+    </view>
+  </view>
+
+  <view class="bottom-actions">
+    <button class="btn-home" bindtap="goToHome">
+      <text>🏠</text>
+      <text>{{i18n['common.home']}}</text>
+    </button>
+    <button class="btn-back" bindtap="goBack">
+      <text>←</text>
+      <text>{{i18n['common.back']}}</text>
+    </button>
+  </view>
+</view>

@@ -3,6 +3,8 @@ const storage = require('../../utils/storage.js')
 const cart = require('../../utils/cart.js')
 const { generateOrderId, formatDate } = require('../../utils/format.js')
 const { isOnline, showOfflineToast } = require('../../utils/network.js')
+const i18n = require('../../utils/i18n.js')
+const exchangeRate = require('../../utils/exchangeRate.js')
 
 Page({
   data: {
@@ -13,7 +15,13 @@ Page({
     tableOptions: ['1号桌', '2号桌', '3号桌', '4号桌', '5号桌', '6号桌', '7号桌', '8号桌'],
     tablePickerIndex: -1,
     peopleCount: 1,
-    isSubmitting: false
+    isSubmitting: false,
+    selectedCurrency: 'CNY',
+    foreignAmount: 0,
+    currencySymbol: '¥',
+    currentRate: 1,
+    i18n: {},
+    showPayOptions: false
   },
 
   onLoad() {
@@ -26,6 +34,44 @@ Page({
         tablePickerIndex: index >= 0 ? index : -1
       })
     }
+    this.setData({
+      selectedCurrency: exchangeRate.getSelectedCurrency()
+    })
+    this.loadI18n()
+    this.calculateForeignAmount()
+
+    this.unsubscribeLangChange = i18n.onChange(() => {
+      this.loadI18n()
+    })
+  },
+
+  onUnload() {
+    if (this.unsubscribeLangChange) {
+      this.unsubscribeLangChange()
+    }
+  },
+
+  loadI18n() {
+    this.setData({
+      i18n: i18n.getPageTranslations([
+        'common.confirm',
+        'common.cancel',
+        'common.back',
+        'common.total',
+        'order.createOrder',
+        'order.tableNumber',
+        'order.peopleCount',
+        'order.remark',
+        'order.totalAmount',
+        'order.orderSuccess',
+        'message.cartEmpty',
+        'message.selectTable',
+        'payment.payMethod',
+        'payment.cashPayment',
+        'payment.foreignCurrency',
+        'payment.selectCurrency'
+      ])
+    })
   },
 
   loadCartData() {
@@ -36,6 +82,25 @@ Page({
       cartList,
       cartTotal
     })
+  },
+
+  calculateForeignAmount() {
+    const { cartTotal, selectedCurrency } = this.data
+    const rate = exchangeRate.getRate(selectedCurrency)
+    if (selectedCurrency !== 'CNY' && rate) {
+      const foreignAmount = exchangeRate.convertToSelectedCurrency(cartTotal)
+      this.setData({
+        foreignAmount,
+        currencySymbol: rate.symbol,
+        currentRate: rate.rateToCny
+      })
+    } else {
+      this.setData({
+        foreignAmount: cartTotal,
+        currencySymbol: '¥',
+        currentRate: 1
+      })
+    }
   },
 
   onTableChange(e) {
@@ -58,10 +123,16 @@ Page({
     })
   },
 
+  onCurrencyChange(e) {
+    const currency = e.detail.value
+    this.setData({ selectedCurrency: currency })
+    this.calculateForeignAmount()
+  },
+
   onSubmitOrder() {
     if (!this.data.tableNumber) {
       wx.showToast({
-        title: '请选择桌号',
+        title: i18n.t('message.selectTable'),
         icon: 'none'
       })
       return
@@ -69,7 +140,7 @@ Page({
 
     if (this.data.cartList.length === 0) {
       wx.showToast({
-        title: '购物车是空的',
+        title: i18n.t('message.cartEmpty'),
         icon: 'none'
       })
       return
@@ -77,16 +148,37 @@ Page({
 
     if (this.data.isSubmitting) return
 
+    this.setData({ showPayOptions: true })
+  },
+
+  onSelectPayMethod(e) {
+    const payMethod = e.currentTarget.dataset.method
+    this.setData({ showPayOptions: false })
+
+    if (payMethod === 'foreign') {
+      wx.navigateTo({
+        url: `/pages/foreign-payment/foreign-payment?orderId=${Date.now()}&orderNo=${generateOrderId()}&amount=${this.data.cartTotal}`
+      })
+    } else {
+      this.doSubmitOrder(payMethod)
+    }
+  },
+
+  onClosePayOptions() {
+    this.setData({ showPayOptions: false })
+  },
+
+  doSubmitOrder(payMethod) {
     this.setData({ isSubmitting: true })
 
-    wx.showLoading({ title: '提交中...' })
+    wx.showLoading({ title: i18n.t('common.loading') })
 
     const order = this.createOrder()
 
     if (isOnline()) {
-      this.submitOrderToServer(order)
+      this.submitOrderToServer(order, payMethod)
     } else {
-      this.saveOrderLocal(order)
+      this.saveOrderLocal(order, payMethod)
     }
   },
 
@@ -114,13 +206,13 @@ Page({
     }
   },
 
-  submitOrderToServer(order) {
+  submitOrderToServer(order, payMethod) {
     setTimeout(() => {
-      this.saveOrderLocal(order)
+      this.saveOrderLocal(order, payMethod)
     }, 1500)
   },
 
-  saveOrderLocal(order) {
+  saveOrderLocal(order, payMethod) {
     storage.addOrder(order)
     storage.setTableNumber(this.data.tableNumber)
     cart.clearCart()
@@ -129,7 +221,7 @@ Page({
     this.setData({ isSubmitting: false })
 
     wx.showToast({
-      title: '下单成功',
+      title: i18n.t('order.orderSuccess'),
       icon: 'success',
       duration: 2000
     })
@@ -143,5 +235,11 @@ Page({
 
   onGoBack() {
     wx.navigateBack()
+  },
+
+  onGoToSettings() {
+    wx.navigateTo({
+      url: '/pages/settings/settings'
+    })
   }
 })

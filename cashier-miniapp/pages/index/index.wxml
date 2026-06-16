@@ -3,6 +3,19 @@
     <text>当前处于离线模式，展示缓存数据</text>
   </view>
 
+  <view class="header-bar">
+    <view class="header-info">
+      <view class="lang-currency">
+        <text class="lang-text">{{currentLanguage}}</text>
+        <text class="separator">|</text>
+        <text class="currency-text">{{currencySymbol}} {{currentCurrency}}</text>
+      </view>
+    </view>
+    <view class="settings-btn" bindtap="onGoToSettings">
+      <text>⚙️</text>
+    </view>
+  </view>
+
   <view class="main-content">
     <scroll-view class="category-sidebar" scroll-y>
       <view
@@ -38,7 +51,10 @@
         <view class="cart-badge">{{cartCount}}</view>
       </view>
       <view class="cart-total">
-        <text class="total-price">{{cartTotal}}</text>
+        <text class="total-price">¥{{cartTotal}}</text>
+        <text class="foreign-price" wx:if="{{currentCurrency !== 'CNY'}}">
+          ≈ {{currencySymbol}}{{cartTotalForeign}}
+        </text>
         <text class="total-tip">另需配送费¥0</text>
       </view>
     </view>

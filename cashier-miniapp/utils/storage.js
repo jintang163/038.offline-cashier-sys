@@ -2,6 +2,7 @@ const CART_KEY = 'cart'
 const GOODS_KEY = 'goods'
 const ORDERS_KEY = 'orders'
 const TABLE_KEY = 'tableNumber'
+const PAYMENT_RECORDS_KEY = 'payment_records'
 
 function get(key, defaultValue = null) {
   try {
@@ -80,6 +81,25 @@ function setTableNumber(tableNumber) {
   return set(TABLE_KEY, tableNumber)
 }
 
+function getPaymentRecords() {
+  return get(PAYMENT_RECORDS_KEY, [])
+}
+
+function setPaymentRecords(records) {
+  return set(PAYMENT_RECORDS_KEY, records)
+}
+
+function addPaymentRecord(record) {
+  const records = getPaymentRecords()
+  records.unshift(record)
+  return setPaymentRecords(records)
+}
+
+function getPaymentRecordsByOrderId(orderId) {
+  const records = getPaymentRecords()
+  return records.filter(item => item.orderId === orderId)
+}
+
 module.exports = {
   get,
   set,
@@ -94,5 +114,9 @@ module.exports = {
   addOrder,
   getOrderById,
   getTableNumber,
-  setTableNumber
+  setTableNumber,
+  getPaymentRecords,
+  setPaymentRecords,
+  addPaymentRecord,
+  getPaymentRecordsByOrderId
 }

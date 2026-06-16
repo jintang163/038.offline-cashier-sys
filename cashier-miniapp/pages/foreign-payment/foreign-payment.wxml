@@ -1,0 +1,128 @@
+<view class="container">
+  <view class="order-info">
+    <view class="info-row">
+      <text class="info-label">{{i18n['order.orderNo']}}</text>
+      <text class="info-value">{{orderNo}}</text>
+    </view>
+    <view class="info-row total-row">
+      <text class="info-label">{{i18n['order.totalAmount']}}</text>
+      <text class="info-value total">¥{{cnyAmount.toFixed(2)}}</text>
+    </view>
+  </view>
+
+  <view class="section">
+    <view class="section-header">
+      <text class="section-icon">💱</text>
+      <text class="section-title">{{i18n['payment.foreignCurrency']}}</text>
+    </view>
+
+    <view class="currency-selector" bindtap="onSelectCurrencyTap">
+      <text class="currency-icon">{{currencySymbol}}</text>
+      <text class="currency-name">{{selectedCurrency}}</text>
+      <text class="currency-arrow">▼</text>
+    </view>
+
+    <view class="rate-info" wx:if="{{selectedCurrency !== 'CNY'}}">
+      <text class="rate-label">{{i18n['payment.exchangeRate']}}:</text>
+      <text class="rate-value">1 {{selectedCurrency}} = ¥{{exchangeRate}}</text>
+    </view>
+
+    <view class="converted-amount" wx:if="{{selectedCurrency !== 'CNY'}}">
+      <text class="converted-label">{{i18n['payment.convertedAmount']}}:</text>
+      <text class="converted-value">{{currencySymbol}}{{foreignRequired.toFixed(2)}}</text>
+    </view>
+  </view>
+
+  <view class="section">
+    <view class="section-header">
+      <text class="section-icon">💰</text>
+      <text class="section-title">{{i18n['payment.receivedAmount']}}</text>
+    </view>
+
+    <view class="amount-input-wrapper">
+      <text class="input-symbol">{{currencySymbol}}</text>
+      <input
+        class="amount-input"
+        type="digit"
+        placeholder="0.00"
+        value="{{foreignReceived}}"
+        bindinput="onAmountInput"
+        focus="{{true}}"
+      />
+    </view>
+
+    <view class="quick-amounts">
+      <view
+        class="quick-btn"
+        wx:for="{{[foreignRequired, Math.ceil(foreignRequired), Math.ceil(foreignRequired) + 5, 100, 200, 500]}}"
+        wx:key="*this"
+        bindtap="onQuickAmount"
+        data-amount="{{item}}"
+      >
+        {{currencySymbol}}{{item}}
+      </view>
+    </view>
+  </view>
+
+  <view class="section" wx:if="{{foreignReceivedNum > 0}}">
+    <view class="section-header">
+      <text class="section-icon">📊</text>
+      <text class="section-title">{{i18n['payment.changeAmount']}}</text>
+    </view>
+
+    <view class="change-info">
+      <view class="change-row">
+        <text class="change-label">{{i18n['payment.receivedAmount']}} (CNY):</text>
+        <text class="change-value">¥{{cnyReceived.toFixed(2)}}</text>
+      </view>
+      <view class="change-row" wx:if="{{selectedCurrency !== 'CNY'}}">
+        <text class="change-label">{{i18n['payment.receivedAmount']}} ({{selectedCurrency}}):</text>
+        <text class="change-value">{{currencySymbol}}{{foreignReceivedNum.toFixed(2)}}</text>
+      </view>
+      <view class="change-row total-change">
+        <text class="change-label">{{i18n['payment.changeAmount']}}:</text>
+        <text class="change-value highlight">
+          {{selectedCurrency === 'CNY' ? '¥' : currencySymbol}}{{selectedCurrency === 'CNY' ? cnyChange.toFixed(2) : foreignChange.toFixed(2)}}
+          <text class="change-sub" wx:if="{{selectedCurrency !== 'CNY'}}"> (¥{{cnyChange.toFixed(2)}})</text>
+        </text>
+      </view>
+    </view>
+  </view>
+
+  <view class="bottom-bar">
+    <button class="btn-back" bindtap="onBack">{{i18n['common.back']}}</button>
+    <button
+      class="btn-confirm {{foreignReceivedNum <= 0 ? 'disabled' : ''}}"
+      bindtap="onConfirmPayment"
+      disabled="{{foreignReceivedNum <= 0}}"
+    >
+      {{i18n['common.confirm']}} {{i18n['payment.payment']}}
+    </button>
+  </view>
+
+  <view class="currency-picker-mask" wx:if="{{showCurrencyPicker}}" bindtap="onCloseCurrencyPicker">
+    <view class="currency-picker" catchtap="">
+      <view class="picker-header">
+        <text class="picker-title">{{i18n['payment.selectCurrency']}}</text>
+        <view class="picker-close" bindtap="onCloseCurrencyPicker">✕</view>
+      </view>
+      <scroll-view scroll-y class="picker-list">
+        <view
+          class="picker-item {{item.code === selectedCurrency ? 'selected' : ''}}"
+          wx:for="{{currencies}}"
+          wx:key="code"
+          bindtap="onCurrencySelect"
+          data-code="{{item.code}}"
+        >
+          <text class="picker-symbol">{{item.symbol}}</text>
+          <view class="picker-info">
+            <text class="picker-name">{{item.name}}</text>
+            <text class="picker-code">{{item.code}}</text>
+          </view>
+          <view class="picker-rate">1 CNY = {{item.rateFromCny}}</view>
+          <view class="picker-check" wx:if="{{item.code === selectedCurrency}}">✓</view>
+        </view>
+      </scroll-view>
+    </view>
+  </view>
+</view>
