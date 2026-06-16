@@ -12,6 +12,25 @@ function checkNetwork() {
   })
 }
 
+function getNetworkType() {
+  return new Promise((resolve) => {
+    wx.getNetworkType({
+      success(res) {
+        resolve({
+          networkType: res.networkType,
+          available: res.networkType !== 'none'
+        })
+      },
+      fail() {
+        resolve({
+          networkType: 'unknown',
+          available: false
+        })
+      }
+    })
+  })
+}
+
 function isOnline() {
   const app = getApp()
   return app.globalData.isOnline
@@ -27,6 +46,7 @@ function showOfflineToast() {
 
 module.exports = {
   checkNetwork,
+  getNetworkType,
   isOnline,
   showOfflineToast
 }

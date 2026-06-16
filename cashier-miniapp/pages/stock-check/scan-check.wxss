@@ -1,0 +1,318 @@
+.container {
+  padding: 20rpx;
+  background-color: #f5f5f5;
+  min-height: 100vh;
+  padding-bottom: 140rpx;
+}
+
+.scan-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  background: #fff;
+  padding: 24rpx;
+  border-radius: 10rpx;
+  margin-bottom: 20rpx;
+}
+
+.task-info .task-name {
+  font-size: 36rpx;
+  font-weight: bold;
+  color: #333;
+  margin-bottom: 8rpx;
+}
+
+.task-info .task-no {
+  font-size: 24rpx;
+  color: #999;
+}
+
+.network-status {
+  padding: 8rpx 16rpx;
+  border-radius: 20rpx;
+  font-size: 24rpx;
+}
+
+.network-status.online {
+  background: #f6ffed;
+  color: #52c41a;
+}
+
+.network-status.offline {
+  background: #fff1f0;
+  color: #ff4d4f;
+}
+
+.progress-card {
+  background: #fff;
+  border-radius: 10rpx;
+  padding: 24rpx;
+  margin-bottom: 20rpx;
+}
+
+.progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16rpx;
+}
+
+.progress-title {
+  font-size: 28rpx;
+  font-weight: bold;
+  color: #333;
+}
+
+.progress-text {
+  font-size: 26rpx;
+  color: #ff6b35;
+}
+
+.progress-bar {
+  height: 16rpx;
+  background: #f0f0f0;
+  border-radius: 8rpx;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #ff6b35, #ff8c5a);
+  border-radius: 8rpx;
+  transition: width 0.3s ease;
+}
+
+.scan-btn-wrap {
+  margin-bottom: 20rpx;
+}
+
+.scan-btn {
+  width: 100%;
+  height: 200rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #ff6b35, #ff8c5a);
+  border-radius: 16rpx;
+  color: #fff;
+  box-shadow: 0 8rpx 20rpx rgba(255, 107, 53, 0.3);
+}
+
+.scan-icon {
+  font-size: 80rpx;
+  margin-bottom: 12rpx;
+}
+
+.scan-text {
+  font-size: 36rpx;
+  font-weight: bold;
+  margin-bottom: 8rpx;
+}
+
+.scan-tip {
+  font-size: 24rpx;
+  opacity: 0.9;
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  font-size: 30rpx;
+  font-weight: bold;
+  color: #333;
+  margin-bottom: 16rpx;
+  padding-left: 8rpx;
+}
+
+.section-title .count {
+  font-size: 24rpx;
+  color: #999;
+  margin-left: 8rpx;
+  font-weight: normal;
+}
+
+.item-list {
+  max-height: 600rpx;
+  margin-bottom: 20rpx;
+}
+
+.item-card {
+  background: #fff;
+  border-radius: 10rpx;
+  padding: 24rpx;
+  margin-bottom: 16rpx;
+  border-left: 6rpx solid transparent;
+  transition: all 0.3s ease;
+}
+
+.item-card.checked {
+  border-left-color: #52c41a;
+  background: #f6ffed;
+}
+
+.item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16rpx;
+}
+
+.item-name {
+  font-size: 30rpx;
+  font-weight: bold;
+  color: #333;
+}
+
+.item-status {
+  padding: 6rpx 16rpx;
+  border-radius: 20rpx;
+  font-size: 24rpx;
+}
+
+.item-status.checked {
+  background: #52c41a;
+  color: #fff;
+}
+
+.item-status.unchecked {
+  background: #f0f0f0;
+  color: #999;
+}
+
+.item-info {
+  background: #fafafa;
+  border-radius: 8rpx;
+  padding: 16rpx;
+  margin-bottom: 16rpx;
+}
+
+.item-info .info-row {
+  display: flex;
+  font-size: 24rpx;
+  margin-bottom: 8rpx;
+}
+
+.item-info .info-row:last-child {
+  margin-bottom: 0;
+}
+
+.item-info .label {
+  color: #999;
+  width: 80rpx;
+  flex-shrink: 0;
+}
+
+.item-info .value {
+  color: #333;
+  flex: 1;
+}
+
+.item-info .value.theory {
+  color: #1890ff;
+  font-weight: bold;
+}
+
+.item-info .value.actual {
+  color: #ff6b35;
+  font-weight: bold;
+}
+
+.item-input {
+  display: flex;
+}
+
+.quantity-input {
+  flex: 1;
+  height: 64rpx;
+  border: 2rpx solid #e8e8e8;
+  border-radius: 8rpx;
+  padding: 0 16rpx;
+  font-size: 28rpx;
+  background: #fff;
+  text-align: center;
+}
+
+.quantity-input:focus {
+  border-color: #ff6b35;
+}
+
+.record-list {
+  max-height: 400rpx;
+  margin-bottom: 20rpx;
+}
+
+.record-card {
+  display: flex;
+  align-items: center;
+  background: #fff;
+  border-radius: 8rpx;
+  padding: 20rpx;
+  margin-bottom: 12rpx;
+}
+
+.record-info {
+  flex: 1;
+}
+
+.record-barcode {
+  font-size: 26rpx;
+  color: #333;
+  margin-bottom: 4rpx;
+}
+
+.record-time {
+  font-size: 22rpx;
+  color: #999;
+}
+
+.record-quantity {
+  font-size: 28rpx;
+  font-weight: bold;
+  color: #ff6b35;
+  margin-right: 24rpx;
+}
+
+.record-delete {
+  padding: 12rpx 20rpx;
+  background: #fff1f0;
+  color: #ff4d4f;
+  border-radius: 8rpx;
+  font-size: 24rpx;
+}
+
+.bottom-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  gap: 20rpx;
+  padding: 20rpx;
+  background: #fff;
+  box-shadow: 0 -2rpx 10rpx rgba(0, 0, 0, 0.05);
+}
+
+.btn-back, .btn-upload {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 88rpx;
+  font-size: 28rpx;
+  border-radius: 8rpx;
+}
+
+.btn-back {
+  background: #f0f0f0;
+  color: #666;
+}
+
+.btn-upload {
+  background: #1890ff;
+  color: #fff;
+}
+
+.btn-upload text:first-child {
+  margin-right: 8rpx;
+}

@@ -1,0 +1,123 @@
+<view class="container" wx:if="{{task}}">
+  <view class="task-header">
+    <view class="task-title">{{task.task_name}}</view>
+    <view class="task-status status-{{task.task_status}}">
+      {{task.statusText}}
+    </view>
+  </view>
+
+  <view class="task-info">
+    <view class="info-row">
+      <view class="info-item">
+        <text class="label">任务编号:</text>
+        <text class="value">{{task.task_no}}</text>
+      </view>
+      <view class="info-item">
+        <text class="label">模式:</text>
+        <text class="value">{{task.modeText}}</text>
+      </view>
+    </view>
+    <view class="info-row">
+      <view class="info-item">
+        <text class="label">门店:</text>
+        <text class="value">{{task.shop_name || '全部门店'}}</text>
+      </view>
+      <view class="info-item">
+        <text class="label">操作员:</text>
+        <text class="value">{{task.operator_name || '未分配'}}</text>
+      </view>
+    </view>
+    <view class="info-row">
+      <view class="info-item full-width">
+        <text class="label">计划时间:</text>
+        <text class="value">{{task.plan_start_time}} ~ {{task.plan_end_time}}</text>
+      </view>
+    </view>
+    <view class="info-row" wx:if="{{task.remark}}">
+      <view class="info-item full-width">
+        <text class="label">备注:</text>
+        <text class="value">{{task.remark}}</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="progress-card">
+    <view class="progress-header">
+      <text class="progress-title">盘点进度</text>
+      <text class="progress-text">{{progress.checked}}/{{progress.total}} ({{progress.progress}}%)</text>
+    </view>
+    <view class="progress-bar">
+      <view class="progress-fill" style="width: {{progress.progress}}%;"></view>
+    </view>
+  </view>
+
+  <view class="category-tabs">
+    <scroll-view scroll-x class="tabs-scroll">
+      <view 
+        class="tab-item {{activeCategory === item.key ? 'active' : ''}}"
+        wx:for="{{categoryGroups}}"
+        wx:key="key"
+        bindtap="switchCategory"
+        data-key="{{item.key}}"
+      >
+        <text>{{item.name}}</text>
+        <text class="tab-count">({{item.checked}}/{{item.count}})</text>
+      </view>
+    </scroll-view>
+  </view>
+
+  <view class="item-list">
+    <view class="item-card" wx:for="{{filteredItems}}" wx:key="id">
+      <view class="item-header">
+        <view class="item-name">{{item.product_name}}</view>
+        <view class="item-status {{item.check_status === 1 ? 'checked' : 'unchecked'}}">
+          {{item.statusText}}
+        </view>
+      </view>
+      <view class="item-info">
+        <view class="info-row">
+          <text class="label">分类:</text>
+          <text class="value">{{item.category_name}}</text>
+        </view>
+        <view class="info-row">
+          <text class="label">条码:</text>
+          <text class="value">{{item.barcode || '-'}}</text>
+        </view>
+        <view class="info-row">
+          <text class="label">单位:</text>
+          <text class="value">{{item.unit}}</text>
+        </view>
+        <view class="info-row">
+          <text class="label">单价:</text>
+          <text class="value">¥{{item.price}}</text>
+        </view>
+        <view class="info-row">
+          <text class="label">理论库存:</text>
+          <text class="value theory">{{item.theoretical_stock}}</text>
+        </view>
+      </view>
+      <view class="item-input">
+        <text class="input-label">实盘数量:</text>
+        <input 
+          class="quantity-input"
+          type="number"
+          placeholder="请输入数量"
+          value="{{item.actual_stock || ''}}"
+          data-id="{{item.id}}"
+          bindblur="updateQuantity"
+        />
+      </view>
+    </view>
+  </view>
+
+  <view class="bottom-bar">
+    <button class="btn-scan" bindtap="goToScan">
+      <text>📷</text>
+      <text>扫码盘点</text>
+    </button>
+    <button class="btn-upload" bindtap="goToUpload">
+      <text>⬆️</text>
+      <text>上传数据</text>
+    </button>
+  </view>
+</view>

@@ -171,7 +171,7 @@ public class ErpApiClient {
         return response;
     }
 
-    private Map<String, Object> executeWithRetry(String path, Map<String, Object> data, HttpMethod method) {
+    public Map<String, Object> executeWithRetry(String path, Map<String, Object> data, HttpMethod method) {
         int retryTimes = erpApiProperties.getRetryTimes();
         int retryInterval = erpApiProperties.getRetryInterval();
         Exception lastException = null;

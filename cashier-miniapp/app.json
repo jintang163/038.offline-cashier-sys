@@ -4,7 +4,11 @@
     "pages/cart/cart",
     "pages/order-confirm/order-confirm",
     "pages/orders/orders",
-    "pages/order-detail/order-detail"
+    "pages/order-detail/order-detail",
+    "pages/stock-check/task-list",
+    "pages/stock-check/task-detail",
+    "pages/stock-check/scan-check",
+    "pages/stock-check/upload"
   ],
   "window": {
     "backgroundTextStyle": "light",
@@ -36,6 +40,12 @@
         "text": "订单",
         "iconPath": "images/tab/order.png",
         "selectedIconPath": "images/tab/order-active.png"
+      },
+      {
+        "pagePath": "pages/stock-check/task-list",
+        "text": "盘点",
+        "iconPath": "images/tab/stock.png",
+        "selectedIconPath": "images/tab/stock-active.png"
       }
     ]
   },

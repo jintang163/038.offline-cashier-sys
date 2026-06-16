@@ -1,0 +1,91 @@
+<view class="container">
+  <view class="header">
+    <view class="network-status {{networkStatus ? 'online' : 'offline'}}">
+      <text class="iconfont">{{networkStatus ? '📡' : '📵'}}</text>
+      <text>{{networkStatus ? '在线' : '离线'}}</text>
+    </view>
+    <view class="sync-btn" bindtap="loadTasks">
+      <text class="iconfont">🔄</text>
+      <text>{{loading ? '同步中...' : '同步任务'}}</text>
+    </view>
+  </view>
+
+  <view class="task-list" wx:if="{{tasks.length > 0}}">
+    <view class="task-card" wx:for="{{tasks}}" wx:key="id">
+      <view class="task-header">
+        <view class="task-title">{{item.task_name}}</view>
+        <view class="task-status status-{{item.task_status}}">
+          {{item.statusText}}
+        </view>
+      </view>
+      
+      <view class="task-info">
+        <view class="info-item">
+          <text class="label">任务编号:</text>
+          <text class="value">{{item.task_no}}</text>
+        </view>
+        <view class="info-item">
+          <text class="label">类型:</text>
+          <text class="value">{{item.typeText}}</text>
+        </view>
+        <view class="info-item">
+          <text class="label">模式:</text>
+          <text class="value">{{item.modeText}}</text>
+        </view>
+        <view class="info-item">
+          <text class="label">门店:</text>
+          <text class="value">{{item.shop_name || '全部门店'}}</text>
+        </view>
+        <view class="info-item" wx:if="{{item.category_name}}">
+          <text class="label">分类:</text>
+          <text class="value">{{item.category_name}}</text>
+        </view>
+        <view class="info-item">
+          <text class="label">计划时间:</text>
+          <text class="value">{{item.plan_start_time}} ~ {{item.plan_end_time}}</text>
+        </view>
+      </view>
+
+      <view class="task-actions">
+        <button 
+          class="action-btn btn-primary" 
+          wx:if="{{item.task_status === 1 || item.task_status === 2}}"
+          bindtap="downloadTask" 
+          data-id="{{item.id}}"
+        >
+          下载任务
+        </button>
+        <button 
+          class="action-btn btn-success" 
+          wx:if="{{item.task_status >= 1 && item.task_status <= 2}}"
+          bindtap="goToDetail" 
+          data-id="{{item.id}}"
+        >
+          任务详情
+        </button>
+        <button 
+          class="action-btn btn-warning" 
+          wx:if="{{item.task_status >= 1 && item.task_status <= 2}}"
+          bindtap="goToScan" 
+          data-id="{{item.id}}"
+        >
+          开始盘点
+        </button>
+        <button 
+          class="action-btn btn-info" 
+          wx:if="{{item.task_status === 2 || item.task_status === 3}}"
+          bindtap="goToUpload" 
+          data-id="{{item.id}}"
+        >
+          上传数据
+        </button>
+      </view>
+    </view>
+  </view>
+
+  <view class="empty-state" wx:else>
+    <text class="empty-icon">📋</text>
+    <text class="empty-text">暂无盘点任务</text>
+    <text class="empty-tip">点击右上角"同步任务"从服务器获取</text>
+  </view>
+</view>

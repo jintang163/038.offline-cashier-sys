@@ -1,0 +1,115 @@
+<view class="container" wx:if="{{task}}">
+  <view class="task-header">
+    <view class="task-info">
+      <view class="task-name">{{task.task_name}}</view>
+      <view class="task-meta">
+        <text class="task-no">任务编号：{{task.task_no}}</text>
+        <text class="task-mode">{{checkModeMap[task.check_mode] || '未知'}}</text>
+      </view>
+    </view>
+    <view class="task-status status-{{task.task_status}}">
+      {{taskStatusMap[task.task_status] || '未知'}}
+    </view>
+  </view>
+
+  <view class="network-status {{networkStatus ? 'online' : 'offline'}}">
+    {{networkStatus ? '📡 网络正常' : '📵 离线模式'}}
+  </view>
+
+  <view class="upload-stats">
+    <view class="stat-card">
+      <view class="stat-number">{{unsyncedItems.length}}</view>
+      <view class="stat-label">待上传盘点数据</view>
+    </view>
+    <view class="stat-card">
+      <view class="stat-number">{{unsyncedRecords.length}}</view>
+      <view class="stat-label">待上传扫码记录</view>
+    </view>
+  </view>
+
+  <view class="progress-section" wx:if="{{uploading || uploadComplete}}">
+    <view class="progress-header">
+      <text class="progress-title">{{uploadComplete ? '上传完成' : '上传进度'}}</text>
+      <text class="progress-text">{{uploadProgress}}%</text>
+    </view>
+    <view class="progress-bar">
+      <view class="progress-fill {{uploadComplete ? 'complete' : ''}}" style="width: {{uploadProgress}}%;"></view>
+    </view>
+  </view>
+
+  <view class="section-title">
+    <text>待上传盘点数据</text>
+    <text class="count">({{unsyncedItems.length}})</text>
+  </view>
+
+  <scroll-view scroll-y class="item-list" wx:if="{{unsyncedItems.length > 0}}">
+    <view class="item-card" wx:for="{{unsyncedItems}}" wx:key="id">
+      <view class="item-header">
+        <view class="item-name">{{item.product_name}}</view>
+        <view class="item-status checked">已盘点</view>
+      </view>
+      <view class="item-info">
+        <view class="info-row">
+          <text class="label">分类:</text>
+          <text class="value">{{item.category_name}}</text>
+        </view>
+        <view class="info-row">
+          <text class="label">理论:</text>
+          <text class="value theory">{{item.theoretical_stock}} {{item.unit}}</text>
+        </view>
+        <view class="info-row">
+          <text class="label">实盘:</text>
+          <text class="value actual">{{item.actual_stock}} {{item.unit}}</text>
+        </view>
+      </view>
+    </view>
+  </scroll-view>
+
+  <view class="empty-state" wx:else>
+    <text class="empty-icon">✅</text>
+    <text class="empty-text">暂无待上传的盘点数据</text>
+  </view>
+
+  <view class="section-title" wx:if="{{unsyncedRecords.length > 0}}">
+    <text>待上传扫码记录</text>
+    <text class="count">({{unsyncedRecords.length}})</text>
+  </view>
+
+  <scroll-view scroll-y class="record-list" wx:if="{{unsyncedRecords.length > 0}}">
+    <view class="record-card" wx:for="{{unsyncedRecords}}" wx:key="local_id">
+      <view class="record-info">
+        <view class="record-barcode">条码：{{item.barcode}}</view>
+        <view class="record-time">{{item.scan_time}}</view>
+      </view>
+      <view class="record-quantity">x{{item.input_quantity || item.scan_quantity}}</view>
+    </view>
+  </scroll-view>
+
+  <view class="bottom-bar">
+    <button class="btn-back" bindtap="goBack">返回</button>
+    <button 
+      class="btn-upload {{uploading || uploadComplete ? 'disabled' : ''}}" 
+      bindtap="uploadData"
+      disabled="{{uploading || uploadComplete}}"
+    >
+      <text wx:if="{{!uploading && !uploadComplete}}">⬆️ 上传数据</text>
+      <text wx:elif="{{uploading}}">上传中...</text>
+      <text wx:else>✅ 已上传</text>
+    </button>
+  </view>
+
+  <view class="action-bar" wx:if="{{uploadComplete && task.task_status === 3}}">
+    <button class="btn-secondary" bindtap="calculateDiff">
+      <text>📊</text>
+      <text>计算差异</text>
+    </button>
+    <button class="btn-secondary" bindtap="goToTaskList">
+      <text>📋</text>
+      <text>返回列表</text>
+    </button>
+  </view>
+</view>
+
+<view class="loading" wx:else>
+  <text>加载中...</text>
+</view>
