@@ -1,11 +1,16 @@
 package com.cashier.server.service.erp;
 
+import cn.hutool.core.codec.Base64;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.crypto.SecureUtil;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import com.cashier.server.common.BusinessException;
 import com.cashier.server.config.ErpApiProperties;
+import com.cashier.server.entity.erp.ErpConfig;
+import com.cashier.server.entity.erp.ErpSyncLog;
+import com.cashier.server.entity.member.MemberCardRecord;
+import com.cashier.server.entity.member.PointRecord;
 import com.cashier.server.entity.order.DailyReport;
 import com.cashier.server.entity.order.Order;
 import org.slf4j.Logger;
@@ -17,6 +22,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -29,6 +36,12 @@ public class ErpApiClient {
     @Autowired
     private ErpApiProperties erpApiProperties;
 
+    @Autowired
+    private DynamicErpConfigManager dynamicErpConfigManager;
+
+    @Autowired
+    private ErpSyncLogService syncLogService;
+
     private final RestTemplate restTemplate;
 
     public ErpApiClient() {
@@ -38,217 +51,431 @@ public class ErpApiClient {
         this.restTemplate = new RestTemplate(factory);
     }
 
-    public List<Map<String, Object>> getProducts() {
-        log.info("开始调用ERP接口获取商品列表");
-        Map<String, Object> response = executeWithRetry("/product/list", new HashMap<>(), HttpMethod.POST);
-        Object data = response.get("data");
-        if (data == null) {
-            throw new BusinessException("ERP返回商品数据为空");
+    private ErpConfig resolveConfig() {
+        try {
+            return dynamicErpConfigManager.getDefaultConfig();
+        } catch (Exception e) {
+            log.warn("动态ERP配置不可用，使用静态配置: {}", e.getMessage());
+            return null;
         }
-        return JSON.parseArray(JSON.toJSONString(data), Map.class);
+    }
+
+    public List<Map<String, Object>> getProducts() {
+        return getProducts(null);
+    }
+
+    public List<Map<String, Object>> getProducts(Long configId) {
+        log.info("开始调用ERP接口获取商品列表");
+        ErpSyncLog syncLog = createSyncLog(configId, "PRODUCT_LIST", "PULL", "AUTO");
+        try {
+            Map<String, Object> response = executeWithRetry("/product/list", new HashMap<>(), HttpMethod.POST, configId, syncLog);
+            Object data = response.get("data");
+            if (data == null) {
+                throw new BusinessException("ERP返回商品数据为空");
+            }
+            updateLogSuccess(syncLog, JSON.toJSONString(response));
+            return JSON.parseArray(JSON.toJSONString(data), Map.class);
+        } catch (Exception e) {
+            updateLogFail(syncLog, null, null, e.getMessage());
+            throw e;
+        }
     }
 
     public List<Map<String, Object>> getStock() {
+        return getStock(null);
+    }
+
+    public List<Map<String, Object>> getStock(Long configId) {
         log.info("开始调用ERP接口获取库存列表");
-        Map<String, Object> response = executeWithRetry("/stock/list", new HashMap<>(), HttpMethod.POST);
-        Object data = response.get("data");
-        if (data == null) {
-            throw new BusinessException("ERP返回库存数据为空");
+        ErpSyncLog syncLog = createSyncLog(configId, "STOCK_LIST", "PULL", "AUTO");
+        try {
+            Map<String, Object> response = executeWithRetry("/stock/list", new HashMap<>(), HttpMethod.POST, configId, syncLog);
+            Object data = response.get("data");
+            if (data == null) {
+                throw new BusinessException("ERP返回库存数据为空");
+            }
+            updateLogSuccess(syncLog, JSON.toJSONString(response));
+            return JSON.parseArray(JSON.toJSONString(data), Map.class);
+        } catch (Exception e) {
+            updateLogFail(syncLog, null, null, e.getMessage());
+            throw e;
         }
-        return JSON.parseArray(JSON.toJSONString(data), Map.class);
     }
 
     public Map<String, Object> createOrder(Order order) {
-        log.info("开始调用ERP接口创建订单, orderId={}, orderNo={}", order.getId(), order.getOrderNo());
-        Map<String, Object> requestData = new HashMap<>();
-        requestData.put("orderId", order.getId());
-        requestData.put("orderNo", order.getOrderNo());
-        requestData.put("erpOrderId", order.getErpOrderId());
-        requestData.put("totalAmount", order.getTotalAmount());
-        requestData.put("discountAmount", order.getDiscountAmount());
-        requestData.put("payAmount", order.getPayAmount());
-        requestData.put("payStatus", order.getPayStatus());
-        requestData.put("orderStatus", order.getOrderStatus());
-        requestData.put("cashierId", order.getCashierId());
-        requestData.put("cashierName", order.getCashierName());
-        requestData.put("remark", order.getRemark());
-        requestData.put("createTime", order.getCreateTime());
+        return createOrder(order, null);
+    }
 
-        Map<String, Object> response = executeWithRetry("/order/create", requestData, HttpMethod.POST);
-        log.info("ERP订单创建成功, orderId={}, response={}", order.getId(), response);
-        return response;
+    public Map<String, Object> createOrder(Order order, Long configId) {
+        log.info("开始调用ERP接口创建订单, orderId={}, orderNo={}", order.getId(), order.getOrderNo());
+        ErpSyncLog syncLog = createSyncLog(configId, "ORDER_CREATE", "PUSH", "AUTO");
+        syncLogService.updateBusinessId(syncLog.getId(), order.getOrderNo());
+        try {
+            Map<String, Object> requestData = new HashMap<>();
+            requestData.put("orderId", order.getId());
+            requestData.put("orderNo", order.getOrderNo());
+            requestData.put("erpOrderId", order.getErpOrderId());
+            requestData.put("totalAmount", order.getTotalAmount());
+            requestData.put("discountAmount", order.getDiscountAmount());
+            requestData.put("payAmount", order.getPayAmount());
+            requestData.put("payStatus", order.getPayStatus());
+            requestData.put("orderStatus", order.getOrderStatus());
+            requestData.put("cashierId", order.getCashierId());
+            requestData.put("cashierName", order.getCashierName());
+            requestData.put("remark", order.getRemark());
+            requestData.put("createTime", order.getCreateTime());
+
+            Map<String, Object> response = executeWithRetry("/order/create", requestData, HttpMethod.POST, configId, syncLog);
+            log.info("ERP订单创建成功, orderId={}, response={}", order.getId(), response);
+            updateLogSuccess(syncLog, JSON.toJSONString(response));
+            return response;
+        } catch (Exception e) {
+            updateLogFail(syncLog, null, null, e.getMessage());
+            throw e;
+        }
     }
 
     public Map<String, Object> updateStock(String erpGoodsId, Integer stock) {
-        log.info("开始调用ERP接口更新库存, erpGoodsId={}, stock={}", erpGoodsId, stock);
-        Map<String, Object> requestData = new HashMap<>();
-        requestData.put("erpGoodsId", erpGoodsId);
-        requestData.put("stock", stock);
+        return updateStock(erpGoodsId, stock, null);
+    }
 
-        Map<String, Object> response = executeWithRetry("/stock/update", requestData, HttpMethod.POST);
-        log.info("ERP库存更新成功, erpGoodsId={}", erpGoodsId);
-        return response;
+    public Map<String, Object> updateStock(String erpGoodsId, Integer stock, Long configId) {
+        log.info("开始调用ERP接口更新库存, erpGoodsId={}, stock={}", erpGoodsId, stock);
+        ErpSyncLog syncLog = createSyncLog(configId, "STOCK_UPDATE", "PUSH", "AUTO");
+        syncLogService.updateBusinessId(syncLog.getId(), erpGoodsId);
+        try {
+            Map<String, Object> requestData = new HashMap<>();
+            requestData.put("erpGoodsId", erpGoodsId);
+            requestData.put("stock", stock);
+
+            Map<String, Object> response = executeWithRetry("/stock/update", requestData, HttpMethod.POST, configId, syncLog);
+            updateLogSuccess(syncLog, JSON.toJSONString(response));
+            return response;
+        } catch (Exception e) {
+            updateLogFail(syncLog, null, null, e.getMessage());
+            throw e;
+        }
     }
 
     public List<Map<String, Object>> getCategories() {
+        return getCategories(null);
+    }
+
+    public List<Map<String, Object>> getCategories(Long configId) {
         log.info("开始调用ERP接口获取分类列表");
-        Map<String, Object> response = executeWithRetry("/category/list", new HashMap<>(), HttpMethod.POST);
-        Object data = response.get("data");
-        if (data == null) {
-            throw new BusinessException("ERP返回分类数据为空");
+        ErpSyncLog syncLog = createSyncLog(configId, "CATEGORY_LIST", "PULL", "AUTO");
+        try {
+            Map<String, Object> response = executeWithRetry("/category/list", new HashMap<>(), HttpMethod.POST, configId, syncLog);
+            Object data = response.get("data");
+            if (data == null) {
+                throw new BusinessException("ERP返回分类数据为空");
+            }
+            updateLogSuccess(syncLog, JSON.toJSONString(response));
+            return JSON.parseArray(JSON.toJSONString(data), Map.class);
+        } catch (Exception e) {
+            updateLogFail(syncLog, null, null, e.getMessage());
+            throw e;
         }
-        return JSON.parseArray(JSON.toJSONString(data), Map.class);
     }
 
     public Map<String, Object> pushSalesSummary(List<Map<String, Object>> summaryList) {
-        log.info("开始调用ERP接口推送销售汇总, 数量={}", summaryList.size());
-        Map<String, Object> requestData = new HashMap<>();
-        requestData.put("summaryList", summaryList);
+        return pushSalesSummary(summaryList, null);
+    }
 
-        Map<String, Object> response = executeWithRetry("/sales/summary/push", requestData, HttpMethod.POST);
-        log.info("ERP销售汇总推送成功, 数量={}", summaryList.size());
-        return response;
+    public Map<String, Object> pushSalesSummary(List<Map<String, Object>> summaryList, Long configId) {
+        log.info("开始调用ERP接口推送销售汇总, 数量={}", summaryList.size());
+        ErpSyncLog syncLog = createSyncLog(configId, "SALES_SUMMARY_PUSH", "PUSH", "AUTO");
+        try {
+            Map<String, Object> requestData = new HashMap<>();
+            requestData.put("summaryList", summaryList);
+
+            Map<String, Object> response = executeWithRetry("/sales/summary/push", requestData, HttpMethod.POST, configId, syncLog);
+            updateLogSuccess(syncLog, JSON.toJSONString(response));
+            return response;
+        } catch (Exception e) {
+            updateLogFail(syncLog, null, null, e.getMessage());
+            throw e;
+        }
     }
 
     public List<Map<String, Object>> getMembers() {
+        return getMembers(null);
+    }
+
+    public List<Map<String, Object>> getMembers(Long configId) {
         log.info("开始调用ERP接口获取会员列表");
-        Map<String, Object> response = executeWithRetry("/member/list", new HashMap<>(), HttpMethod.POST);
-        Object data = response.get("data");
-        if (data == null) {
-            return null;
+        ErpSyncLog syncLog = createSyncLog(configId, "MEMBER_LIST", "PULL", "AUTO");
+        try {
+            Map<String, Object> response = executeWithRetry("/member/list", new HashMap<>(), HttpMethod.POST, configId, syncLog);
+            Object data = response.get("data");
+            if (data == null) {
+                updateLogSuccess(syncLog, JSON.toJSONString(response));
+                return null;
+            }
+            updateLogSuccess(syncLog, JSON.toJSONString(response));
+            return JSON.parseArray(JSON.toJSONString(data), Map.class);
+        } catch (Exception e) {
+            updateLogFail(syncLog, null, null, e.getMessage());
+            throw e;
         }
-        return JSON.parseArray(JSON.toJSONString(data), Map.class);
     }
 
     public Map<String, Object> pushMemberPoints(List<PointRecord> pointRecords) {
-        log.info("开始调用ERP接口推送积分变动, 数量={}", pointRecords.size());
-        Map<String, Object> requestData = new HashMap<>();
-        requestData.put("pointRecords", pointRecords);
+        return pushMemberPoints(pointRecords, null);
+    }
 
-        Map<String, Object> response = executeWithRetry("/member/points/push", requestData, HttpMethod.POST);
-        log.info("ERP积分变动推送成功, 数量={}", pointRecords.size());
-        return response;
+    public Map<String, Object> pushMemberPoints(List<PointRecord> pointRecords, Long configId) {
+        log.info("开始调用ERP接口推送积分变动, 数量={}", pointRecords.size());
+        ErpSyncLog syncLog = createSyncLog(configId, "MEMBER_POINTS_PUSH", "PUSH", "AUTO");
+        try {
+            Map<String, Object> requestData = new HashMap<>();
+            requestData.put("pointRecords", pointRecords);
+
+            Map<String, Object> response = executeWithRetry("/member/points/push", requestData, HttpMethod.POST, configId, syncLog);
+            updateLogSuccess(syncLog, JSON.toJSONString(response));
+            return response;
+        } catch (Exception e) {
+            updateLogFail(syncLog, null, null, e.getMessage());
+            throw e;
+        }
     }
 
     public Map<String, Object> pushMemberCardRecords(List<MemberCardRecord> cardRecords) {
-        log.info("开始调用ERP接口推送会员卡交易, 数量={}", cardRecords.size());
-        Map<String, Object> requestData = new HashMap<>();
-        requestData.put("cardRecords", cardRecords);
+        return pushMemberCardRecords(cardRecords, null);
+    }
 
-        Map<String, Object> response = executeWithRetry("/member/card/records/push", requestData, HttpMethod.POST);
-        log.info("ERP会员卡交易推送成功, 数量={}", cardRecords.size());
-        return response;
+    public Map<String, Object> pushMemberCardRecords(List<MemberCardRecord> cardRecords, Long configId) {
+        log.info("开始调用ERP接口推送会员卡交易, 数量={}", cardRecords.size());
+        ErpSyncLog syncLog = createSyncLog(configId, "MEMBER_CARD_RECORDS_PUSH", "PUSH", "AUTO");
+        try {
+            Map<String, Object> requestData = new HashMap<>();
+            requestData.put("cardRecords", cardRecords);
+
+            Map<String, Object> response = executeWithRetry("/member/card/records/push", requestData, HttpMethod.POST, configId, syncLog);
+            updateLogSuccess(syncLog, JSON.toJSONString(response));
+            return response;
+        } catch (Exception e) {
+            updateLogFail(syncLog, null, null, e.getMessage());
+            throw e;
+        }
     }
 
     public Map<String, Object> pushDailyReport(DailyReport dailyReport) {
-        log.info("开始调用ERP接口推送营业日报, reportNo={}, reportDate={}", dailyReport.getReportNo(), dailyReport.getReportDate());
-        Map<String, Object> requestData = new HashMap<>();
-        requestData.put("reportNo", dailyReport.getReportNo());
-        requestData.put("reportDate", dailyReport.getReportDate());
-        requestData.put("shopId", dailyReport.getShopId());
-        requestData.put("shopName", dailyReport.getShopName());
-        requestData.put("totalOrders", dailyReport.getTotalOrders());
-        requestData.put("totalAmount", dailyReport.getTotalAmount());
-        requestData.put("discountAmount", dailyReport.getDiscountAmount());
-        requestData.put("refundAmount", dailyReport.getRefundAmount());
-        requestData.put("actualAmount", dailyReport.getActualAmount());
-        requestData.put("cashAmount", dailyReport.getCashAmount());
-        requestData.put("wechatAmount", dailyReport.getWechatAmount());
-        requestData.put("alipayAmount", dailyReport.getAlipayAmount());
-        requestData.put("memberCardAmount", dailyReport.getMemberCardAmount());
-        requestData.put("otherPayAmount", dailyReport.getOtherPayAmount());
-        requestData.put("memberDiscountAmount", dailyReport.getMemberDiscountAmount());
-        requestData.put("pointsDeductionAmount", dailyReport.getPointsDeductionAmount());
-        requestData.put("totalItems", dailyReport.getTotalItems());
-        requestData.put("avgOrderAmount", dailyReport.getAvgOrderAmount());
-        requestData.put("newMemberCount", dailyReport.getNewMemberCount());
-        requestData.put("cashierId", dailyReport.getCashierId());
-        requestData.put("cashierName", dailyReport.getCashierName());
-        requestData.put("remark", dailyReport.getRemark());
+        return pushDailyReport(dailyReport, null);
+    }
 
-        Map<String, Object> response = executeWithRetry("/report/daily/push", requestData, HttpMethod.POST);
-        log.info("ERP营业日报推送成功, reportNo={}", dailyReport.getReportNo());
-        return response;
+    public Map<String, Object> pushDailyReport(DailyReport dailyReport, Long configId) {
+        log.info("开始调用ERP接口推送营业日报, reportNo={}, reportDate={}", dailyReport.getReportNo(), dailyReport.getReportDate());
+        ErpSyncLog syncLog = createSyncLog(configId, "DAILY_REPORT_PUSH", "PUSH", "AUTO");
+        syncLogService.updateBusinessId(syncLog.getId(), dailyReport.getReportNo());
+        try {
+            Map<String, Object> requestData = new HashMap<>();
+            requestData.put("reportNo", dailyReport.getReportNo());
+            requestData.put("reportDate", dailyReport.getReportDate());
+            requestData.put("shopId", dailyReport.getShopId());
+            requestData.put("shopName", dailyReport.getShopName());
+            requestData.put("totalOrders", dailyReport.getTotalOrders());
+            requestData.put("totalAmount", dailyReport.getTotalAmount());
+            requestData.put("discountAmount", dailyReport.getDiscountAmount());
+            requestData.put("refundAmount", dailyReport.getRefundAmount());
+            requestData.put("actualAmount", dailyReport.getActualAmount());
+            requestData.put("cashAmount", dailyReport.getCashAmount());
+            requestData.put("wechatAmount", dailyReport.getWechatAmount());
+            requestData.put("alipayAmount", dailyReport.getAlipayAmount());
+            requestData.put("memberCardAmount", dailyReport.getMemberCardAmount());
+            requestData.put("otherPayAmount", dailyReport.getOtherPayAmount());
+            requestData.put("memberDiscountAmount", dailyReport.getMemberDiscountAmount());
+            requestData.put("pointsDeductionAmount", dailyReport.getPointsDeductionAmount());
+            requestData.put("totalItems", dailyReport.getTotalItems());
+            requestData.put("avgOrderAmount", dailyReport.getAvgOrderAmount());
+            requestData.put("newMemberCount", dailyReport.getNewMemberCount());
+            requestData.put("cashierId", dailyReport.getCashierId());
+            requestData.put("cashierName", dailyReport.getCashierName());
+            requestData.put("remark", dailyReport.getRemark());
+
+            Map<String, Object> response = executeWithRetry("/report/daily/push", requestData, HttpMethod.POST, configId, syncLog);
+            updateLogSuccess(syncLog, JSON.toJSONString(response));
+            return response;
+        } catch (Exception e) {
+            updateLogFail(syncLog, null, null, e.getMessage());
+            throw e;
+        }
     }
 
     public List<Map<String, Object>> getStockCheckTasks(Long shopId, String lastSyncTime) {
+        return getStockCheckTasks(shopId, lastSyncTime, null);
+    }
+
+    public List<Map<String, Object>> getStockCheckTasks(Long shopId, String lastSyncTime, Long configId) {
         log.info("开始调用ERP接口获取盘点任务列表, shopId={}, lastSyncTime={}", shopId, lastSyncTime);
-        Map<String, Object> requestData = new HashMap<>();
-        if (shopId != null) {
-            requestData.put("shopId", shopId);
+        ErpSyncLog syncLog = createSyncLog(configId, "STOCK_CHECK_TASK_LIST", "PULL", "AUTO");
+        try {
+            Map<String, Object> requestData = new HashMap<>();
+            if (shopId != null) {
+                requestData.put("shopId", shopId);
+            }
+            if (lastSyncTime != null) {
+                requestData.put("lastSyncTime", lastSyncTime);
+            }
+            Map<String, Object> response = executeWithRetry("/stock/check/task/list", requestData, HttpMethod.POST, configId, syncLog);
+            Object data = response.get("data");
+            if (data == null) {
+                updateLogSuccess(syncLog, JSON.toJSONString(response));
+                return new ArrayList<>();
+            }
+            updateLogSuccess(syncLog, JSON.toJSONString(response));
+            return JSON.parseArray(JSON.toJSONString(data), Map.class);
+        } catch (Exception e) {
+            updateLogFail(syncLog, null, null, e.getMessage());
+            throw e;
         }
-        if (lastSyncTime != null) {
-            requestData.put("lastSyncTime", lastSyncTime);
-        }
-        Map<String, Object> response = executeWithRetry("/stock/check/task/list", requestData, HttpMethod.POST);
-        Object data = response.get("data");
-        if (data == null) {
-            return new ArrayList<>();
-        }
-        return JSON.parseArray(JSON.toJSONString(data), Map.class);
     }
 
     public Map<String, Object> getStockCheckTaskDetail(String erpTaskId) {
+        return getStockCheckTaskDetail(erpTaskId, null);
+    }
+
+    public Map<String, Object> getStockCheckTaskDetail(String erpTaskId, Long configId) {
         log.info("开始调用ERP接口获取盘点任务详情, erpTaskId={}", erpTaskId);
-        Map<String, Object> requestData = new HashMap<>();
-        requestData.put("erpTaskId", erpTaskId);
-        Map<String, Object> response = executeWithRetry("/stock/check/task/detail", requestData, HttpMethod.POST);
-        Object data = response.get("data");
-        if (data == null) {
-            throw new BusinessException("ERP返回盘点任务详情为空");
+        ErpSyncLog syncLog = createSyncLog(configId, "STOCK_CHECK_TASK_DETAIL", "PULL", "AUTO");
+        syncLogService.updateBusinessId(syncLog.getId(), erpTaskId);
+        try {
+            Map<String, Object> requestData = new HashMap<>();
+            requestData.put("erpTaskId", erpTaskId);
+            Map<String, Object> response = executeWithRetry("/stock/check/task/detail", requestData, HttpMethod.POST, configId, syncLog);
+            Object data = response.get("data");
+            if (data == null) {
+                throw new BusinessException("ERP返回盘点任务详情为空");
+            }
+            updateLogSuccess(syncLog, JSON.toJSONString(response));
+            return JSON.parseObject(JSON.toJSONString(data), Map.class);
+        } catch (Exception e) {
+            updateLogFail(syncLog, null, null, e.getMessage());
+            throw e;
         }
-        return JSON.parseObject(JSON.toJSONString(data), Map.class);
     }
 
     public List<Map<String, Object>> getStockCheckItems(String erpTaskId) {
+        return getStockCheckItems(erpTaskId, null);
+    }
+
+    public List<Map<String, Object>> getStockCheckItems(String erpTaskId, Long configId) {
         log.info("开始调用ERP接口获取盘点商品明细, erpTaskId={}", erpTaskId);
-        Map<String, Object> requestData = new HashMap<>();
-        requestData.put("erpTaskId", erpTaskId);
-        Map<String, Object> response = executeWithRetry("/stock/check/item/list", requestData, HttpMethod.POST);
-        Object data = response.get("data");
-        if (data == null) {
-            throw new BusinessException("ERP返回盘点商品明细为空");
+        ErpSyncLog syncLog = createSyncLog(configId, "STOCK_CHECK_ITEM_LIST", "PULL", "AUTO");
+        try {
+            Map<String, Object> requestData = new HashMap<>();
+            requestData.put("erpTaskId", erpTaskId);
+            Map<String, Object> response = executeWithRetry("/stock/check/item/list", requestData, HttpMethod.POST, configId, syncLog);
+            Object data = response.get("data");
+            if (data == null) {
+                throw new BusinessException("ERP返回盘点商品明细为空");
+            }
+            updateLogSuccess(syncLog, JSON.toJSONString(response));
+            return JSON.parseArray(JSON.toJSONString(data), Map.class);
+        } catch (Exception e) {
+            updateLogFail(syncLog, null, null, e.getMessage());
+            throw e;
         }
-        return JSON.parseArray(JSON.toJSONString(data), Map.class);
     }
 
     public Map<String, Object> pushStockCheckResult(Map<String, Object> checkResult) {
+        return pushStockCheckResult(checkResult, null);
+    }
+
+    public Map<String, Object> pushStockCheckResult(Map<String, Object> checkResult, Long configId) {
         log.info("开始调用ERP接口推送盘点结果, erpTaskId={}", checkResult.get("erpTaskId"));
-        Map<String, Object> response = executeWithRetry("/stock/check/result/push", checkResult, HttpMethod.POST);
-        log.info("ERP盘点结果推送成功, erpTaskId={}", checkResult.get("erpTaskId"));
-        return response;
+        ErpSyncLog syncLog = createSyncLog(configId, "STOCK_CHECK_RESULT_PUSH", "PUSH", "AUTO");
+        if (checkResult.get("erpTaskId") != null) {
+            syncLogService.updateBusinessId(syncLog.getId(), checkResult.get("erpTaskId").toString());
+        }
+        try {
+            Map<String, Object> response = executeWithRetry("/stock/check/result/push", checkResult, HttpMethod.POST, configId, syncLog);
+            updateLogSuccess(syncLog, JSON.toJSONString(response));
+            return response;
+        } catch (Exception e) {
+            updateLogFail(syncLog, null, null, e.getMessage());
+            throw e;
+        }
     }
 
     public Map<String, Object> pushStockCheckDiff(Map<String, Object> diffData) {
+        return pushStockCheckDiff(diffData, null);
+    }
+
+    public Map<String, Object> pushStockCheckDiff(Map<String, Object> diffData, Long configId) {
         log.info("开始调用ERP接口推送盘点差异, erpTaskId={}", diffData.get("erpTaskId"));
-        Map<String, Object> response = executeWithRetry("/stock/check/diff/push", diffData, HttpMethod.POST);
-        log.info("ERP盘点差异推送成功, erpTaskId={}", diffData.get("erpTaskId"));
-        return response;
+        ErpSyncLog syncLog = createSyncLog(configId, "STOCK_CHECK_DIFF_PUSH", "PUSH", "AUTO");
+        if (diffData.get("erpTaskId") != null) {
+            syncLogService.updateBusinessId(syncLog.getId(), diffData.get("erpTaskId").toString());
+        }
+        try {
+            Map<String, Object> response = executeWithRetry("/stock/check/diff/push", diffData, HttpMethod.POST, configId, syncLog);
+            updateLogSuccess(syncLog, JSON.toJSONString(response));
+            return response;
+        } catch (Exception e) {
+            updateLogFail(syncLog, null, null, e.getMessage());
+            throw e;
+        }
     }
 
     public Map<String, Object> pushLossReport(Map<String, Object> lossReport) {
+        return pushLossReport(lossReport, null);
+    }
+
+    public Map<String, Object> pushLossReport(Map<String, Object> lossReport, Long configId) {
         log.info("开始调用ERP接口推送报损单, lossReportNo={}", lossReport.get("lossReportNo"));
-        Map<String, Object> response = executeWithRetry("/stock/loss-report/push", lossReport, HttpMethod.POST);
-        log.info("ERP报损单推送成功, lossReportNo={}", lossReport.get("lossReportNo"));
-        return response;
+        ErpSyncLog syncLog = createSyncLog(configId, "LOSS_REPORT_PUSH", "PUSH", "AUTO");
+        try {
+            Map<String, Object> response = executeWithRetry("/stock/loss-report/push", lossReport, HttpMethod.POST, configId, syncLog);
+            updateLogSuccess(syncLog, JSON.toJSONString(response));
+            return response;
+        } catch (Exception e) {
+            updateLogFail(syncLog, null, null, e.getMessage());
+            throw e;
+        }
     }
 
     public Map<String, Object> pushStockAdjust(Map<String, Object> stockAdjust) {
+        return pushStockAdjust(stockAdjust, null);
+    }
+
+    public Map<String, Object> pushStockAdjust(Map<String, Object> stockAdjust, Long configId) {
         log.info("开始调用ERP接口推送库存调整单, adjustNo={}", stockAdjust.get("adjustNo"));
-        Map<String, Object> response = executeWithRetry("/stock/adjust/push", stockAdjust, HttpMethod.POST);
-        log.info("ERP库存调整单推送成功, adjustNo={}", stockAdjust.get("adjustNo"));
-        return response;
+        ErpSyncLog syncLog = createSyncLog(configId, "STOCK_ADJUST_PUSH", "PUSH", "AUTO");
+        try {
+            Map<String, Object> response = executeWithRetry("/stock/adjust/push", stockAdjust, HttpMethod.POST, configId, syncLog);
+            updateLogSuccess(syncLog, JSON.toJSONString(response));
+            return response;
+        } catch (Exception e) {
+            updateLogFail(syncLog, null, null, e.getMessage());
+            throw e;
+        }
     }
 
     public Map<String, Object> executeWithRetry(String path, Map<String, Object> data, HttpMethod method) {
-        int retryTimes = erpApiProperties.getRetryTimes();
-        int retryInterval = erpApiProperties.getRetryInterval();
+        return executeWithRetry(path, data, method, null, null);
+    }
+
+    public Map<String, Object> executeWithRetry(String path, Map<String, Object> data, HttpMethod method, Long configId, ErpSyncLog syncLog) {
+        ErpConfig config = configId != null ? dynamicErpConfigManager.getConfigById(configId) : resolveConfig();
+
+        int retryTimes;
+        int retryInterval;
+        if (config != null) {
+            retryTimes = config.getRetryTimes() != null ? config.getRetryTimes() : erpApiProperties.getRetryTimes();
+            retryInterval = config.getRetryInterval() != null ? config.getRetryInterval() : erpApiProperties.getRetryInterval();
+        } else {
+            retryTimes = erpApiProperties.getRetryTimes();
+            retryInterval = erpApiProperties.getRetryInterval();
+        }
+
         Exception lastException = null;
+        long startTime = System.currentTimeMillis();
 
         for (int i = 1; i <= retryTimes; i++) {
             try {
                 log.info("ERP接口调用第 {} 次尝试, path={}", i, path);
-                return executeRequest(path, data, method);
+                return executeRequest(path, data, method, config, syncLog);
             } catch (Exception e) {
                 lastException = e;
                 log.warn("ERP接口调用第 {} 次失败, path={}, error={}", i, path, e.getMessage());
@@ -267,22 +494,52 @@ public class ErpApiClient {
         throw new BusinessException("ERP接口调用失败: " + (lastException != null ? lastException.getMessage() : "未知错误"));
     }
 
-    private Map<String, Object> executeRequest(String path, Map<String, Object> data, HttpMethod method) {
-        String url = erpApiProperties.getBaseUrl() + path;
-        long timestamp = System.currentTimeMillis();
-        String sign = generateSign(erpApiProperties.getAppKey(), timestamp, erpApiProperties.getAppSecret());
+    private Map<String, Object> executeRequest(String path, Map<String, Object> data, HttpMethod method, ErpConfig config, ErpSyncLog syncLog) {
+        String baseUrl;
+        String authType;
+        String appKey;
+        String appSecret;
+        String token;
+        String username;
+        String password;
+        Integer timeout;
 
-        Map<String, Object> requestBody = new HashMap<>();
-        requestBody.put("appKey", erpApiProperties.getAppKey());
-        requestBody.put("timestamp", timestamp);
-        requestBody.put("sign", sign);
-        requestBody.put("data", data);
+        if (config != null) {
+            baseUrl = config.getBaseUrl();
+            authType = config.getAuthType();
+            appKey = config.getAppKey();
+            appSecret = config.getAppSecret();
+            token = config.getToken();
+            username = config.getUsername();
+            password = config.getPassword();
+            timeout = config.getTimeout();
+        } else {
+            baseUrl = erpApiProperties.getBaseUrl();
+            authType = "APP_KEY_SIGN";
+            appKey = erpApiProperties.getAppKey();
+            appSecret = erpApiProperties.getAppSecret();
+            token = null;
+            username = null;
+            password = null;
+            timeout = erpApiProperties.getTimeout();
+        }
 
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.set("Accept", MediaType.APPLICATION_JSON_VALUE);
+        if (StrUtil.isBlank(baseUrl)) {
+            throw new BusinessException("ERP基础地址未配置");
+        }
 
-        HttpEntity<String> entity = new HttpEntity<>(JSON.toJSONString(requestBody), headers);
+        String url = baseUrl + path;
+        long startTime = System.currentTimeMillis();
+
+        Map<String, Object> requestBody = buildRequestBody(data, authType, appKey, appSecret, token);
+        HttpHeaders headers = buildHeaders(authType, token, username, password);
+
+        String requestBodyStr = JSON.toJSONString(requestBody);
+        HttpEntity<String> entity = new HttpEntity<>(requestBodyStr, headers);
+
+        if (syncLog != null) {
+            syncLogService.updateLogStart(syncLog.getId(), url, method.name(), requestBodyStr);
+        }
 
         try {
             log.debug("发送ERP请求, url={}, body={}", url, requestBody);
@@ -309,16 +566,94 @@ public class ErpApiClient {
             result.put("message", jsonResponse.getString("message"));
             result.put("data", jsonResponse.get("data"));
 
-            log.debug("ERP接口调用成功, path={}", path);
+            int costTime = (int) (System.currentTimeMillis() - startTime);
+            log.debug("ERP接口调用成功, path={}, cost={}ms", path, costTime);
+
+            if (syncLog != null) {
+                syncLogService.updateLogSuccess(syncLog.getId(), responseBody, costTime);
+            }
             return result;
         } catch (RestClientException e) {
             log.error("ERP接口HTTP请求失败, url={}, error={}", url, e.getMessage());
+            int costTime = (int) (System.currentTimeMillis() - startTime);
+            if (syncLog != null) {
+                syncLogService.updateLogFail(syncLog.getId(), null, "HTTP_ERROR", e.getMessage(), costTime);
+            }
             throw new BusinessException("ERP接口HTTP请求失败: " + e.getMessage(), e);
+        } catch (BusinessException e) {
+            int costTime = (int) (System.currentTimeMillis() - startTime);
+            if (syncLog != null) {
+                syncLogService.updateLogFail(syncLog.getId(), null, "BIZ_ERROR", e.getMessage(), costTime);
+            }
+            throw e;
         }
+    }
+
+    private Map<String, Object> buildRequestBody(Map<String, Object> data, String authType, String appKey, String appSecret, String token) {
+        if ("NONE".equalsIgnoreCase(authType) || "BASIC".equalsIgnoreCase(authType) || "TOKEN".equalsIgnoreCase(authType)) {
+            return data != null ? data : new HashMap<>();
+        }
+
+        Map<String, Object> requestBody = new HashMap<>();
+        long timestamp = System.currentTimeMillis();
+
+        if ("APP_KEY_SIGN".equalsIgnoreCase(authType)) {
+            requestBody.put("appKey", appKey);
+            requestBody.put("timestamp", timestamp);
+            String sign = generateSign(appKey, timestamp, appSecret);
+            requestBody.put("sign", sign);
+        } else if ("OAUTH2".equalsIgnoreCase(authType)) {
+            requestBody.put("accessToken", token);
+        }
+
+        requestBody.put("data", data != null ? data : new HashMap<>());
+        return requestBody;
+    }
+
+    private HttpHeaders buildHeaders(String authType, String token, String username, String password) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.set("Accept", MediaType.APPLICATION_JSON_VALUE);
+
+        if ("BASIC".equalsIgnoreCase(authType) && StrUtil.isNotBlank(username) && StrUtil.isNotBlank(password)) {
+            String auth = username + ":" + password;
+            byte[] encodedAuth = Base64.encode(auth.getBytes(StandardCharsets.UTF_8));
+            headers.set("Authorization", "Basic " + new String(encodedAuth, StandardCharsets.UTF_8));
+        } else if ("TOKEN".equalsIgnoreCase(authType) && StrUtil.isNotBlank(token)) {
+            headers.set("Authorization", "Bearer " + token);
+        } else if ("OAUTH2".equalsIgnoreCase(authType) && StrUtil.isNotBlank(token)) {
+            headers.set("Authorization", "Bearer " + token);
+        }
+        return headers;
     }
 
     private String generateSign(String appKey, long timestamp, String appSecret) {
         String signStr = appKey + timestamp + appSecret;
         return SecureUtil.md5(signStr);
+    }
+
+    private ErpSyncLog createSyncLog(Long configId, String businessType, String direction, String syncType) {
+        try {
+            ErpConfig config = configId != null ? dynamicErpConfigManager.getConfigById(configId) : resolveConfig();
+            Long actualConfigId = config != null ? config.getId() : 1L;
+            return syncLogService.createLog(actualConfigId, businessType, direction, syncType);
+        } catch (Exception e) {
+            log.warn("创建同步日志失败: {}", e.getMessage());
+            ErpSyncLog log = new ErpSyncLog();
+            log.setId(-1L);
+            return log;
+        }
+    }
+
+    private void updateLogSuccess(ErpSyncLog syncLog, String responseBody) {
+        if (syncLog != null && syncLog.getId() != null && syncLog.getId() > 0) {
+            syncLogService.updateLogSuccess(syncLog.getId(), responseBody, 0);
+        }
+    }
+
+    private void updateLogFail(ErpSyncLog syncLog, String errorCode, String errorMessage, String responseBody) {
+        if (syncLog != null && syncLog.getId() != null && syncLog.getId() > 0) {
+            syncLogService.updateLogFail(syncLog.getId(), responseBody, errorCode, errorMessage, 0);
+        }
     }
 }

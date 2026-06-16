@@ -107,6 +107,15 @@ public class WebSocketService {
         WebSocketServer.sendMessage(clientId, json.toJSONString());
     }
 
+    public void broadcastErpSyncUpdate(Object data) {
+        JSONObject json = new JSONObject();
+        json.put("type", "erp_sync_update");
+        json.put("data", data);
+        json.put("timestamp", System.currentTimeMillis());
+        WebSocketServer.broadcast(json.toJSONString());
+        log.info("广播ERP同步更新通知");
+    }
+
     public int getOnlineCount() {
         return WebSocketServer.getOnlineCount();
     }
