@@ -2,7 +2,7 @@ import Dexie from 'dexie'
 
 const db = new Dexie('CashierCacheDB')
 
-db.version(9).stores({
+db.version(10).stores({
   products: '++id, erp_goods_id, product_name, category_id, category_name, barcode, price, original_price, unit, image, description, stock, status, sort, created_at, updated_at',
   categories: '++id, name, sort, status, created_at, updated_at',
   orders: '++id, order_no, erp_order_id, total_amount, discount_amount, pay_amount, pay_type, pay_status, order_status, sync_status, sync_attempts, sync_error, cashier_id, cashier_name, member_id, member_name, remark, created_at, synced_at',
@@ -26,6 +26,7 @@ db.version(9).stores({
   print_queue: '++id, queue_no, order_id, order_no, printer_id, printer_code, printer_name, category_id, category_name, items, total_amount, copies, template_code, print_status, retry_count, error_message, printed_at, created_at, synced_at',
   print_history: '++id, queue_id, order_id, order_no, printer_id, printer_code, category_id, items_count, copies, print_status, print_time, cashier_id, cashier_name, created_at',
   daily_reports: '++id, report_no, report_date, shop_id, shop_name, total_orders, total_amount, discount_amount, refund_amount, actual_amount, cash_amount, wechat_amount, alipay_amount, member_card_amount, other_pay_amount, member_discount_amount, points_deduction_amount, total_items, avg_order_amount, new_member_count, cashier_id, cashier_name, report_status, sync_status, sync_attempts, sync_error, sync_time, erp_push_status, erp_push_time, erp_push_error, remark, created_at, updated_at',
+  daily_report_files: '&key, date, format, blob, generated_at',
 })
 
 class DexieCache {
@@ -1660,6 +1661,7 @@ class DexieCache {
     await db.print_queue.clear()
     await db.print_history.clear()
     await db.daily_reports.clear()
+    await db.daily_report_files.clear()
     this.initialized = false
   }
 }

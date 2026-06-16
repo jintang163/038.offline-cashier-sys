@@ -313,6 +313,51 @@ CREATE TABLE print_history (
     KEY idx_create_time (create_time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='打印历史记录表';
 
+-- 营业日报表
+DROP TABLE IF EXISTS daily_report;
+CREATE TABLE daily_report (
+    id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    report_no VARCHAR(32) NOT NULL COMMENT '日报编号',
+    report_date DATE NOT NULL COMMENT '报表日期',
+    shop_id BIGINT DEFAULT NULL COMMENT '门店ID',
+    shop_name VARCHAR(100) DEFAULT NULL COMMENT '门店名称',
+    total_orders INT DEFAULT 0 COMMENT '总订单数',
+    total_amount DECIMAL(12,2) DEFAULT 0.00 COMMENT '营业总额',
+    discount_amount DECIMAL(12,2) DEFAULT 0.00 COMMENT '优惠总额',
+    refund_amount DECIMAL(12,2) DEFAULT 0.00 COMMENT '退菜/退款总额',
+    actual_amount DECIMAL(12,2) DEFAULT 0.00 COMMENT '实收金额',
+    cash_amount DECIMAL(12,2) DEFAULT 0.00 COMMENT '现金收款',
+    wechat_amount DECIMAL(12,2) DEFAULT 0.00 COMMENT '微信收款',
+    alipay_amount DECIMAL(12,2) DEFAULT 0.00 COMMENT '支付宝收款',
+    member_card_amount DECIMAL(12,2) DEFAULT 0.00 COMMENT '会员卡收款',
+    other_pay_amount DECIMAL(12,2) DEFAULT 0.00 COMMENT '其他支付方式金额',
+    member_discount_amount DECIMAL(12,2) DEFAULT 0.00 COMMENT '会员优惠金额',
+    points_deduction_amount DECIMAL(12,2) DEFAULT 0.00 COMMENT '积分抵扣金额',
+    total_items INT DEFAULT 0 COMMENT '商品总数量',
+    avg_order_amount DECIMAL(12,2) DEFAULT 0.00 COMMENT '客单价',
+    new_member_count INT DEFAULT 0 COMMENT '新增会员数',
+    cashier_id BIGINT DEFAULT NULL COMMENT '结账收银员ID',
+    cashier_name VARCHAR(50) DEFAULT NULL COMMENT '结账收银员姓名',
+    report_status TINYINT DEFAULT 1 COMMENT '报表状态: 0-草稿 1-已确认 2-已审核',
+    sync_status TINYINT DEFAULT 0 COMMENT '同步状态: 0-未同步 1-已同步 2-同步失败',
+    sync_attempts INT DEFAULT 0 COMMENT '同步重试次数',
+    sync_error VARCHAR(500) DEFAULT NULL COMMENT '同步错误信息',
+    sync_time DATETIME DEFAULT NULL COMMENT '同步时间',
+    erp_push_status TINYINT DEFAULT 0 COMMENT 'ERP推送状态: 0-未推送 1-已推送 2-推送失败',
+    erp_push_time DATETIME DEFAULT NULL COMMENT 'ERP推送时间',
+    erp_push_error VARCHAR(500) DEFAULT NULL COMMENT 'ERP推送错误',
+    remark VARCHAR(500) DEFAULT NULL COMMENT '备注',
+    create_time DATETIME DEFAULT NULL COMMENT '创建时间',
+    update_time DATETIME DEFAULT NULL COMMENT '更新时间',
+    is_deleted TINYINT DEFAULT 0 COMMENT '逻辑删除: 0-未删除 1-已删除',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_report_no (report_no),
+    UNIQUE KEY uk_report_date_shop (report_date, shop_id),
+    KEY idx_sync_status (sync_status),
+    KEY idx_erp_push_status (erp_push_status),
+    KEY idx_create_time (create_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='营业日报表';
+
 -- 初始用户角色关联数据
 INSERT INTO sys_user_role (user_id, role_id, role_code, role_name, create_time, update_time) VALUES
 (1, 1, 'admin', '管理员', NOW(), NOW()),

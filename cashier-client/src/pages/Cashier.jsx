@@ -9,6 +9,7 @@ import syncService from '../services/syncService'
 import memberService from '../services/memberService'
 import kitchenPrintService from '../services/kitchenPrintService'
 import recommendService from '../services/intelligentRecommendService'
+import dailyReportService from '../services/dailyReportService'
 import dayjs from 'dayjs'
 
 const { Option } = Select
@@ -533,6 +534,18 @@ function Cashier() {
       setPayModalVisible(false)
       setSelectedCardId(null)
       loadProducts(activeCategory)
+
+      try {
+        dailyReportService.generateTodayReport().catch(e => console.warn('生成当日日报失败:', e))
+      } catch (e) {
+        console.warn('生成当日日报失败:', e)
+      }
+
+      try {
+        dailyReportService.checkAndGenerateMissingReports().catch(e => console.warn('检查并补全遗漏日报失败:', e))
+      } catch (e) {
+        console.warn('检查并补全遗漏日报失败:', e)
+      }
 
       try {
         recommendService.invalidateCache()

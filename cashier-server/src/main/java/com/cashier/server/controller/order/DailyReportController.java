@@ -1,6 +1,7 @@
 package com.cashier.server.controller.order;
 
 import com.cashier.server.common.Result;
+import com.cashier.server.dto.DailyReportSyncDTO;
 import com.cashier.server.entity.order.DailyReport;
 import com.cashier.server.service.order.DailyReportService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -50,9 +51,10 @@ public class DailyReportController {
     }
 
     @PostMapping("/batch-save")
-    public Result<Boolean> batchSave(@RequestBody List<DailyReport> reports) {
-        boolean result = dailyReportService.batchSaveOrUpdate(reports);
-        return Result.success(result);
+    public Result<Map<String, Object>> batchSave(@RequestBody List<DailyReportSyncDTO> dtos) {
+        boolean success = dailyReportService.batchSaveOrUpdateByDTO(dtos);
+        dailyReportService.pushSyncedReportsToErpAuto();
+        return Result.success(Map.of("success", success));
     }
 
     @PutMapping("/{id}/sync-status")
@@ -61,6 +63,9 @@ public class DailyReportController {
             @RequestParam Integer status,
             @RequestParam(required = false) String error) {
         dailyReportService.updateSyncStatus(id, status, error);
+        if (status == 1) {
+            dailyReportService.pushReportToErp(id);
+        }
         return Result.success();
     }
 
@@ -91,6 +96,33 @@ public class DailyReportController {
                 .body(data);
     }
 
+    @GetMapping("/export/pdf")
+    public ResponseEntity<byte[]> exportPdf(
+            @RequestParam @DateTimeFormat(pattern = "yyyy-MM-dd") LocalDate reportDate) {
+        byte[] data = dailyReportService.exportReportToPdf(reportDate);
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_PDF);
+        String fileName = "daily_report_" + reportDate + ".pdf";
+        headers.setContentDispositionFormData("attachment", fileName);
+        return ResponseEntity.ok()
+                .headers(headers)
+                .body(data);
+    }
+
+    @GetMapping("/export/pdf/range")
+    public ResponseEntity<byte[]> exportPdfRange(
+            @RequestParam @DateTimeFormat(pattern = "yyyy-MM-dd") LocalDate startDate,
+            @RequestParam @DateTimeFormat(pattern = "yyyy-MM-dd") LocalDate endDate) {
+        byte[] data = dailyReportService.exportReportRangeToPdf(startDate, endDate);
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_PDF);
+        String fileName = "daily_report_" + startDate + "_" + endDate + ".pdf";
+        headers.setContentDispositionFormData("attachment", fileName);
+        return ResponseEntity.ok()
+                .headers(headers)
+                .body(data);
+    }
+
     @PostMapping("/{id}/push-erp")
     public Result<Boolean> pushToErp(@PathVariable Long id) {
         boolean result = dailyReportService.pushReportToErp(id);
@@ -100,6 +132,12 @@ public class DailyReportController {
     @PostMapping("/push-erp/batch")
     public Result<Map<String, Object>> pushUnsyncedToErp() {
         boolean result = dailyReportService.pushUnsyncedReportsToErp();
+        return Result.success(Map.of("success", result));
+    }
+
+    @PostMapping("/push-erp/auto")
+    public Result<Map<String, Object>> autoPushSyncedToErp() {
+        boolean result = dailyReportService.pushSyncedReportsToErpAuto();
         return Result.success(Map.of("success", result));
     }
 }
