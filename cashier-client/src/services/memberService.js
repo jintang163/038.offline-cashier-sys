@@ -241,17 +241,21 @@ class MemberService {
     }
   }
 
-  async addPoints(memberId, amount, orderNo, remark = '') {
+  async addPoints(memberId, amount, orderNo, remark = '', autoUpgrade = true) {
     const member = await this.getMemberById(memberId)
     if (!member) throw new Error('会员不存在')
 
     const { totalPoints } = await this.calculatePoints(memberId, amount)
-    if (totalPoints <= 0) return { points: 0, recordId: null }
+    if (totalPoints <= 0) return { points: 0, recordId: null, levelUpdated: false }
 
     const beforePoints = member.points || 0
-    const afterPoints = beforePoints + totalPoints
+    const beforeTotalPoints = member.total_points !== undefined && member.total_points !== null
+      ? member.total_points
+      : beforePoints
 
-    await db.updateMemberPoints(memberId, totalPoints)
+    const updateResult = await db.updateMemberPoints(memberId, totalPoints)
+    const afterPoints = updateResult.points
+    const afterTotalPoints = updateResult.totalPoints
 
     const userInfo = JSON.parse(localStorage.getItem('userInfo') || '{}')
     const recordId = await db.addPointRecord({
@@ -268,10 +272,36 @@ class MemberService {
     })
 
     member.points = afterPoints
+    member.total_points = afterTotalPoints
     this._updateMemberCache(member)
+
+    let levelResult = { levelUpdated: false }
+    if (autoUpgrade) {
+      levelResult = await this.checkAndUpdateMemberLevel(memberId)
+      if (levelResult.levelUpdated) {
+        const updatedMember = await this.getMemberById(memberId)
+        if (updatedMember) {
+          member.level_id = updatedMember.level_id
+          member.level_name = updatedMember.level_name
+          member.discount_rate = updatedMember.discount_rate
+          this._updateMemberCache(member)
+        }
+      }
+    }
+
     this._setCurrentMember(member)
 
-    return { points: totalPoints, recordId, beforePoints, afterPoints }
+    return {
+      points: totalPoints,
+      recordId,
+      beforePoints,
+      afterPoints,
+      beforeTotalPoints,
+      afterTotalPoints,
+      levelUpdated: levelResult.levelUpdated,
+      levelInfo: levelResult.levelUpdated ? levelResult.newLevel : null,
+      levelMessage: levelResult.message,
+    }
   }
 
   async deductPoints(memberId, points, orderNo, remark = '') {
@@ -412,6 +442,173 @@ class MemberService {
       }
     }
     return levels
+  }
+
+  async calculateMemberLevel(totalPoints) {
+    const levels = await this.getMemberLevels()
+    if (!levels || levels.length === 0) {
+      return null
+    }
+
+    for (let i = levels.length - 1; i >= 0; i--) {
+      const level = levels[i]
+      const minPoints = level.min_points || 0
+      const maxPoints = level.max_points !== undefined && level.max_points !== null
+        ? level.max_points
+        : Infinity
+      if (totalPoints >= minPoints && totalPoints <= maxPoints) {
+        return {
+          levelId: level.id,
+          levelCode: level.level_code,
+          levelName: level.level_name,
+          discountRate: level.discount_rate,
+          pointRate: level.point_rate,
+          minPoints: level.min_points,
+          maxPoints: level.max_points,
+        }
+      }
+    }
+
+    return levels[0] ? {
+      levelId: levels[0].id,
+      levelCode: levels[0].level_code,
+      levelName: levels[0].level_name,
+      discountRate: levels[0].discount_rate,
+      pointRate: levels[0].point_rate,
+      minPoints: levels[0].min_points,
+      maxPoints: levels[0].max_points,
+    } : null
+  }
+
+  async getMemberLevelById(levelId) {
+    const levels = await this.getMemberLevels()
+    return levels.find(l => l.id === levelId) || null
+  }
+
+  async checkAndUpdateMemberLevel(memberId, forceRecalc = false) {
+    const member = await this.getMemberById(memberId)
+    if (!member) {
+      return { levelUpdated: false, message: '会员不存在' }
+    }
+
+    const totalPoints = member.total_points !== undefined && member.total_points !== null
+      ? member.total_points
+      : (member.points || 0)
+
+    const newLevel = await this.calculateMemberLevel(totalPoints)
+    if (!newLevel) {
+      return { levelUpdated: false, message: '未找到会员等级配置' }
+    }
+
+    const oldLevelId = member.level_id
+    const levelChanged = forceRecalc || oldLevelId !== newLevel.levelId
+
+    if (levelChanged) {
+      await db.updateMemberLevel(
+        memberId,
+        newLevel.levelId,
+        newLevel.levelName,
+        newLevel.discountRate
+      )
+
+      member.level_id = newLevel.levelId
+      member.level_name = newLevel.levelName
+      member.discount_rate = newLevel.discountRate
+      this._updateMemberCache(member)
+      if (this.currentMember && this.currentMember.id === memberId) {
+        this._setCurrentMember(member)
+      }
+
+      this._emit('levelChange', {
+        memberId,
+        oldLevelId,
+        newLevel: {
+          levelId: newLevel.levelId,
+          levelName: newLevel.levelName,
+          discountRate: newLevel.discountRate,
+        },
+        totalPoints,
+      })
+
+      return {
+        levelUpdated: true,
+        oldLevelId,
+        newLevel: {
+          levelId: newLevel.levelId,
+          levelName: newLevel.levelName,
+          discountRate: newLevel.discountRate,
+        },
+        totalPoints,
+        message: `会员等级已${oldLevelId ? '变更' : '设置'}为「${newLevel.levelName}」`,
+      }
+    }
+
+    return {
+      levelUpdated: false,
+      currentLevel: {
+        levelId: newLevel.levelId,
+        levelName: newLevel.levelName,
+        discountRate: newLevel.discountRate,
+      },
+      totalPoints,
+      message: '会员等级未变化',
+    }
+  }
+
+  async getNextLevelInfo(memberId) {
+    const member = await this.getMemberById(memberId)
+    if (!member) return null
+
+    const levels = await this.getMemberLevels()
+    if (!levels || levels.length === 0) return null
+
+    const totalPoints = member.total_points !== undefined && member.total_points !== null
+      ? member.total_points
+      : (member.points || 0)
+
+    const currentLevelIndex = levels.findIndex(
+      l => member.level_id === l.id ||
+        (totalPoints >= (l.min_points || 0) &&
+          totalPoints <= (l.max_points !== undefined && l.max_points !== null ? l.max_points : Infinity))
+    )
+
+    if (currentLevelIndex < 0 || currentLevelIndex >= levels.length - 1) {
+      return {
+        currentLevel: levels[currentLevelIndex] || null,
+        nextLevel: null,
+        pointsNeeded: 0,
+        progressPercent: 100,
+      }
+    }
+
+    const currentLevel = levels[currentLevelIndex]
+    const nextLevel = levels[currentLevelIndex + 1]
+    const currentLevelMax = currentLevel.max_points !== undefined && currentLevel.max_points !== null
+      ? currentLevel.max_points
+      : (nextLevel.min_points || 0)
+
+    const pointsNeeded = (nextLevel.min_points || 0) - totalPoints
+    const levelRange = currentLevelMax - (currentLevel.min_points || 0)
+    const progressInLevel = totalPoints - (currentLevel.min_points || 0)
+    const progressPercent = levelRange > 0 ? Math.min(100, Math.max(0, (progressInLevel / levelRange) * 100)) : 100
+
+    return {
+      currentLevel: {
+        levelId: currentLevel.id,
+        levelName: currentLevel.level_name,
+        minPoints: currentLevel.min_points,
+        maxPoints: currentLevelMax,
+      },
+      nextLevel: {
+        levelId: nextLevel.id,
+        levelName: nextLevel.level_name,
+        minPoints: nextLevel.min_points,
+        discountRate: nextLevel.discount_rate,
+      },
+      totalPoints,
+      pointsNeeded: Math.max(0, pointsNeeded),
+      progressPercent,
+    }
   }
 
   async getBirthdayMembers(days = 7) {

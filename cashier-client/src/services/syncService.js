@@ -700,6 +700,13 @@ class SyncService {
         synced: 0,
       }))
 
+      const memberChangesResult = await this.syncMemberChanges().catch((e) => ({
+        success: false,
+        error: e.message,
+        success: 0,
+        failed: 0,
+      }))
+
       return {
         success: true,
         products: productResult,
@@ -715,6 +722,7 @@ class SyncService {
         invoiceWallets: invoiceWalletResult,
         refunds: refundResult,
         fraudLockLogs: fraudLockResult,
+        memberChanges: memberChangesResult,
       }
     } finally {
       this.syncing = false
@@ -1128,6 +1136,76 @@ class SyncService {
       await db.addSyncRecord('fraudLockLogs', 'failed', { error: error.message })
       this.emit('syncComplete', { type: 'fraudLockLogs', success: false, error: error.message })
       this.emit('statusChange', { type: 'fraudLockLogs', status: 'failed', error: error.message })
+      throw error
+    }
+  }
+
+  async syncMemberChanges() {
+    if (!navigator.onLine) {
+      throw new Error('OFFLINE')
+    }
+
+    this.emit('syncStart', { type: 'memberChanges' })
+    this.emit('statusChange', { type: 'memberChanges', status: 'syncing' })
+
+    try {
+      const membersToSync = await db.getUnsyncedMembers(100)
+
+      if (membersToSync.length === 0) {
+        this.emit('syncComplete', { type: 'memberChanges', success: true, count: 0 })
+        this.emit('statusChange', { type: 'memberChanges', status: 'success' })
+        return { success: true, count: 0 }
+      }
+
+      const results = { success: 0, failed: 0, errors: [] }
+
+      for (const member of membersToSync) {
+        try {
+          const memberData = {
+            id: member.id,
+            erpMemberId: member.erp_member_id,
+            phone: member.phone,
+            cardNo: member.card_no,
+            memberName: member.member_name,
+            levelId: member.level_id,
+            levelName: member.level_name,
+            discountRate: member.discount_rate,
+            points: member.points,
+            totalPoints: member.total_points || member.points,
+            balance: member.balance,
+            status: member.status,
+          }
+          const response = await api.saveMember(memberData)
+          if (response?.code === 0) {
+            await db.updateMemberSyncStatus(member.id, 1)
+            results.success++
+          } else {
+            results.failed++
+            const error = response?.message || '同步失败'
+            results.errors.push({ id: member.id, error })
+            await db.updateMemberSyncStatus(member.id, 2, error)
+          }
+        } catch (error) {
+          results.failed++
+          const errorMsg = error.message || '同步异常'
+          results.errors.push({ id: member.id, error: errorMsg })
+          await db.updateMemberSyncStatus(member.id, 2, errorMsg)
+        }
+      }
+
+      await db.addSyncRecord('memberChanges', 'success', {
+        success: results.success,
+        failed: results.failed,
+      })
+
+      this.emit('syncComplete', { type: 'memberChanges', success: true, ...results })
+      this.emit('statusChange', { type: 'memberChanges', status: 'success' })
+
+      return { success: true, ...results }
+    } catch (error) {
+      await db.addSyncRecord('memberChanges', 'failed', { error: error.message })
+      this.emit('syncComplete', { type: 'memberChanges', success: false, error: error.message })
+      this.emit('statusChange', { type: 'memberChanges', status: 'failed', error: error.message })
       throw error
     }
   }

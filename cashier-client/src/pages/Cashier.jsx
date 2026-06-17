@@ -533,6 +533,19 @@ function Cashier() {
           if (pointsResult.points > 0) {
             message.info(`赠送积分：+${pointsResult.points}`)
           }
+          if (pointsResult.levelUpdated && pointsResult.levelInfo) {
+            message.success({
+              content: (
+                <span>
+                  🎉 恭喜升级为「<b>{pointsResult.levelInfo.levelName}</b>」！
+                  {pointsResult.levelInfo.discountRate < 100 && (
+                    <span> 享受<b>{pointsResult.levelInfo.discountRate / 10}折</b>优惠</span>
+                  )}
+                </span>
+              ),
+              duration: 5,
+            })
+          }
         } catch (e) {
           console.warn('Add points failed:', e)
         }
@@ -685,6 +698,19 @@ function Cashier() {
           )
           if (pointsResult.points > 0) {
             message.info(`赠送积分：+${pointsResult.points}`)
+          }
+          if (pointsResult.levelUpdated && pointsResult.levelInfo) {
+            message.success({
+              content: (
+                <span>
+                  🎉 恭喜升级为「<b>{pointsResult.levelInfo.levelName}</b>」！
+                  {pointsResult.levelInfo.discountRate < 100 && (
+                    <span> 享受<b>{pointsResult.levelInfo.discountRate / 10}折</b>优惠</span>
+                  )}
+                </span>
+              ),
+              duration: 5,
+            })
           }
         } catch (e) {
           console.warn('Add points failed:', e)

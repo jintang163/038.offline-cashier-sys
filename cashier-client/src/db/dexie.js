@@ -2,7 +2,7 @@ import Dexie from 'dexie'
 
 const db = new Dexie('CashierCacheDB')
 
-db.version(13).stores({
+db.version(14).stores({
   products: '++id, erp_goods_id, product_name, category_id, category_name, barcode, price, original_price, unit, image, description, stock, status, sort, created_at, updated_at',
   categories: '++id, name, sort, status, created_at, updated_at',
   orders: '++id, order_no, erp_order_id, total_amount, discount_amount, pay_amount, pay_type, pay_status, order_status, sync_status, sync_attempts, sync_error, cashier_id, cashier_name, member_id, member_name, remark, created_at, synced_at',
@@ -12,7 +12,7 @@ db.version(13).stores({
   offlineQueue: '++id, action, status, retry_count, created_at',
   settings: 'key',
   syncRecords: '++id, type, status, created_at',
-  members: '++id, erp_member_id, phone, card_no, member_name, gender, birthday, level_id, level_name, points, balance, status, last_used_at, sync_status, last_sync_at',
+  members: '++id, erp_member_id, phone, card_no, member_name, gender, birthday, level_id, level_name, points, total_points, balance, status, last_used_at, sync_status, last_sync_at',
   member_levels: '++id, erp_level_id, level_code, level_name, min_points, max_points, discount_rate, status, sync_status',
   point_rules: '++id, rule_code, rule_name, rule_type, rule_value, min_amount, max_amount, start_date, end_date, status, sync_status',
   point_records: '++id, record_no, member_id, phone, change_type, change_points, before_points, after_points, order_no, source_type, remark, sync_status, sync_attempts, sync_error, cashier_id, created_at',
@@ -601,12 +601,49 @@ class DexieCache {
     const member = await db.members.get(memberId)
     if (!member) throw new Error('会员不存在')
     const newPoints = Math.max(0, (member.points || 0) + pointsDelta)
+    const newTotalPoints = pointsDelta > 0
+      ? (member.total_points || member.points || 0) + pointsDelta
+      : (member.total_points || member.points || 0)
     await db.members.update(memberId, {
       points: newPoints,
+      total_points: newTotalPoints,
       updated_at: new Date().toISOString(),
       sync_status: 0,
     })
-    return newPoints
+    return { points: newPoints, totalPoints: newTotalPoints }
+  }
+
+  async updateMemberLevel(memberId, levelId, levelName, discountRate) {
+    const member = await db.members.get(memberId)
+    if (!member) throw new Error('会员不存在')
+    await db.members.update(memberId, {
+      level_id: levelId,
+      level_name: levelName,
+      discount_rate: discountRate,
+      updated_at: new Date().toISOString(),
+      sync_status: 0,
+    })
+    return { levelId, levelName, discountRate }
+  }
+
+  async getUnsyncedMembers(limit = 100) {
+    return await db.members
+      .where('sync_status')
+      .below(1)
+      .limit(limit)
+      .sortBy('updated_at')
+  }
+
+  async updateMemberSyncStatus(id, status, error = null) {
+    const updateData = { sync_status: status }
+    if (status === 1) {
+      updateData.last_sync_at = new Date().toISOString()
+      updateData.sync_error = null
+    }
+    if (error) {
+      updateData.sync_error = error
+    }
+    return await db.members.update(id, updateData)
   }
 
   async updateMemberBalance(memberId, balanceDelta) {
