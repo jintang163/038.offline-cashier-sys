@@ -17,4 +17,6 @@ public interface SysUserService extends IService<SysUser> {
     boolean logout(String token);
 
     SysUser getUserByToken(String token);
+
+    Map<String, Object> verifyManager(String username, String password);
 }

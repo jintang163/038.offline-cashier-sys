@@ -2,7 +2,7 @@ import Dexie from 'dexie'
 
 const db = new Dexie('CashierCacheDB')
 
-db.version(11).stores({
+db.version(12).stores({
   products: '++id, erp_goods_id, product_name, category_id, category_name, barcode, price, original_price, unit, image, description, stock, status, sort, created_at, updated_at',
   categories: '++id, name, sort, status, created_at, updated_at',
   orders: '++id, order_no, erp_order_id, total_amount, discount_amount, pay_amount, pay_type, pay_status, order_status, sync_status, sync_attempts, sync_error, cashier_id, cashier_name, member_id, member_name, remark, created_at, synced_at',
@@ -29,6 +29,8 @@ db.version(11).stores({
   daily_report_files: '&key, date, format, blob, generated_at',
   electronic_invoices: '++id, invoice_no, invoice_code, invoice_number, order_id, order_no, shop_id, shop_name, buyer_name, buyer_phone, buyer_email, total_amount, amount, tax_amount, tax_rate, invoice_type, invoice_title_type, invoice_status, qrcode_token, qrcode_content, qrcode_url, invoice_pdf_url, tax_control_status, tax_control_error, tax_control_time, push_status, push_time, push_error, sync_status, sync_attempts, sync_error, sync_time, scanned_count, last_scanned_time, cashier_id, cashier_name, created_at, updated_at',
   invoice_wallets: '++id, wallet_no, customer_identifier, customer_type, customer_name, customer_phone, invoice_id, invoice_no, invoice_code, invoice_number, invoice_date, invoice_amount, buyer_name, shop_id, shop_name, scan_source, scan_time, wallet_status, is_read, is_favorite, tags, remark, sync_status, sync_time, created_at, updated_at',
+  refund_orders: '++id, refund_no, erp_refund_id, order_id, order_no, erp_order_id, refund_type, refund_amount, original_pay_amount, refund_reason, audit_status, auditor_id, auditor_name, audit_time, audit_remark, sync_status, sync_attempts, sync_error, sync_time, erp_push_status, erp_push_error, erp_push_time, cashier_id, cashier_name, manager_id, manager_name, remark, created_at, updated_at',
+  refund_order_items: '++id, refund_order_id, refund_no, order_item_id, product_id, erp_goods_id, product_name, barcode, image, price, original_quantity, refund_quantity, original_amount, refund_amount, discount_amount, remark, created_at',
 })
 
 class DexieCache {
@@ -1926,6 +1928,194 @@ class DexieCache {
         })
       }
     }
+  }
+
+  _generateRefundNo() {
+    return 'RF' + Date.now() + Math.floor(Math.random() * 10000).toString().padStart(4, '0')
+  }
+
+  async createRefundOrder(refundData) {
+    const now = new Date().toISOString()
+    const refundNo = refundData.refund_no || this._generateRefundNo()
+    const items = refundData.items || []
+
+    const refund = {
+      ...refundData,
+      refund_no: refundNo,
+      audit_status: refundData.audit_status ?? 0,
+      sync_status: refundData.sync_status ?? 0,
+      sync_attempts: refundData.sync_attempts ?? 0,
+      erp_push_status: refundData.erp_push_status ?? 0,
+      created_at: now,
+      updated_at: now,
+    }
+    delete refund.items
+
+    const refundId = await db.refund_orders.add(refund)
+
+    for (const item of items) {
+      await db.refund_order_items.add({
+        ...item,
+        refund_order_id: refundId,
+        refund_no: refundNo,
+        created_at: now,
+      })
+    }
+
+    for (const item of items) {
+      if (item.product_id && item.refund_quantity) {
+        await this._increaseProductStock(item.product_id, item.refund_quantity)
+      }
+    }
+
+    return { id: refundId, refund_no: refundNo }
+  }
+
+  async _increaseProductStock(productId, quantity) {
+    const product = await db.products.get(productId)
+    if (product) {
+      const newStock = (product.stock || 0) + quantity
+      await db.products.update(productId, { stock: newStock, updated_at: new Date().toISOString() })
+    }
+  }
+
+  async getRefundOrders(params = {}) {
+    const { page = 1, pageSize = 20, startDate, endDate, keyword = '', auditStatus, syncStatus, refundType } = params
+    let collection = db.refund_orders.orderBy('id').reverse()
+
+    if (startDate) {
+      collection = collection.filter((o) => o.created_at >= startDate)
+    }
+    if (endDate) {
+      collection = collection.filter((o) => o.created_at <= endDate)
+    }
+    if (keyword) {
+      collection = collection.filter((o) => o.refund_no?.includes(keyword) || o.order_no?.includes(keyword))
+    }
+    if (auditStatus !== undefined && auditStatus !== null) {
+      collection = collection.filter((o) => o.audit_status === auditStatus)
+    }
+    if (syncStatus !== undefined && syncStatus !== null) {
+      collection = collection.filter((o) => o.sync_status === syncStatus)
+    }
+    if (refundType !== undefined && refundType !== null) {
+      collection = collection.filter((o) => o.refund_type === refundType)
+    }
+
+    const allItems = await collection.toArray()
+    const items = allItems.slice((page - 1) * pageSize, page * pageSize)
+
+    return { items, total: allItems.length, page, pageSize }
+  }
+
+  async getRefundOrderById(id) {
+    const refund = await db.refund_orders.get(id)
+    if (refund) {
+      refund.items = await db.refund_order_items.where('refund_order_id').equals(id).toArray()
+    }
+    return refund
+  }
+
+  async getRefundOrdersByOrderId(orderId) {
+    const refunds = await db.refund_orders.where('order_id').equals(orderId).toArray()
+    for (const r of refunds) {
+      r.items = await db.refund_order_items.where('refund_order_id').equals(r.id).toArray()
+    }
+    return refunds
+  }
+
+  async getRefundedQuantityByOrderItemId(orderItemId) {
+    const items = await db.refund_order_items.where('order_item_id').equals(orderItemId).toArray()
+    return items.reduce((sum, i) => sum + (i.refund_quantity || 0), 0)
+  }
+
+  async getTotalRefundedAmountByOrderId(orderId) {
+    const refunds = await db.refund_orders.where('order_id').equals(orderId).toArray()
+    return refunds.reduce((sum, r) => {
+      if (r.audit_status !== 2) {
+        return sum + parseFloat(r.refund_amount || 0)
+      }
+      return sum
+    }, 0)
+  }
+
+  async getUnsyncedRefundOrders(limit = 100) {
+    const refunds = await db.refund_orders
+      .filter((r) => r.sync_status !== 1 && r.audit_status !== 2 && (r.sync_attempts || 0) < 5)
+      .limit(limit)
+      .sortBy('created_at')
+
+    for (const r of refunds) {
+      r.items = await db.refund_order_items.where('refund_order_id').equals(r.id).toArray()
+    }
+    return refunds
+  }
+
+  async getFailedRefundOrders() {
+    return await db.refund_orders
+      .filter((r) => r.sync_status === 2)
+      .sortBy('created_at')
+  }
+
+  async updateRefundSyncStatus(refundId, syncStatus, syncError = null) {
+    const updateData = { sync_status: syncStatus, updated_at: new Date().toISOString() }
+    if (syncStatus === 1) {
+      updateData.sync_time = new Date().toISOString()
+    }
+    if (syncError) {
+      updateData.sync_error = syncError
+      const refund = await db.refund_orders.get(refundId)
+      updateData.sync_attempts = (refund?.sync_attempts || 0) + 1
+    }
+    return await db.refund_orders.update(refundId, updateData)
+  }
+
+  async getUnsyncedRefundCount() {
+    return await db.refund_orders
+      .filter((r) => r.sync_status !== 1 && r.audit_status !== 2)
+      .count()
+  }
+
+  async auditRefundLocal(refundId, auditStatus, auditorId, auditorName, auditRemark = null) {
+    const now = new Date().toISOString()
+    const updateData = {
+      audit_status: auditStatus,
+      auditor_id: auditorId,
+      auditor_name: auditorName,
+      audit_time: now,
+      audit_remark: auditRemark,
+      updated_at: now,
+    }
+    return await db.refund_orders.update(refundId, updateData)
+  }
+
+  async getPendingAuditRefunds(limit = 50) {
+    const refunds = await db.refund_orders
+      .filter((r) => r.audit_status === 0)
+      .limit(limit)
+      .sortBy('created_at')
+    for (const r of refunds) {
+      r.items = await db.refund_order_items.where('refund_order_id').equals(r.id).toArray()
+    }
+    return refunds
+  }
+
+  async updateRefundErpPushStatus(refundId, pushStatus, pushError = null, erpRefundId = null) {
+    const now = new Date().toISOString()
+    const updateData = {
+      erp_push_status: pushStatus,
+      updated_at: now,
+    }
+    if (pushStatus === 1) {
+      updateData.erp_push_time = now
+    }
+    if (pushError) {
+      updateData.erp_push_error = pushError
+    }
+    if (erpRefundId) {
+      updateData.erp_refund_id = erpRefundId
+    }
+    return await db.refund_orders.update(refundId, updateData)
   }
 }
 

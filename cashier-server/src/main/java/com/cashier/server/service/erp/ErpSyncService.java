@@ -72,4 +72,6 @@ public interface ErpSyncService {
     boolean pushStockCheckResultToErp(Long taskId);
 
     boolean pushStockCheckDiffToErp(Long diffId);
+
+    String pushRedSalesOrder(com.cashier.server.entity.order.RefundOrder refundOrder, List<com.cashier.server.entity.order.RefundOrderItem> items);
 }

@@ -489,6 +489,88 @@ class ApiService {
     })
   }
 
+  async createRefundOrder(refundData) {
+    return this.request({
+      url: '/refund',
+      method: 'post',
+      data: refundData,
+    })
+  }
+
+  async getRefundList(params) {
+    return this.request(
+      {
+        url: '/refund/list',
+        method: 'get',
+        params,
+      },
+      { offlineQueue: false }
+    )
+  }
+
+  async getRefundDetail(id) {
+    return this.request(
+      {
+        url: '/refund/' + id,
+        method: 'get',
+      },
+      { offlineQueue: false }
+    )
+  }
+
+  async auditRefund(id, auditData) {
+    return this.request({
+      url: `/refund/${id}/audit`,
+      method: 'post',
+      data: auditData,
+    })
+  }
+
+  async batchSyncRefundOrders(refundList) {
+    return this.request({
+      url: '/refund/batch-sync',
+      method: 'post',
+      data: refundList,
+    })
+  }
+
+  async pushRefundToErp(id) {
+    return this.request({
+      url: `/refund/${id}/push-erp`,
+      method: 'post',
+    })
+  }
+
+  async getUnsyncedRefunds(params) {
+    return this.request(
+      {
+        url: '/refund/unsynced',
+        method: 'get',
+        params,
+      },
+      { offlineQueue: false }
+    )
+  }
+
+  async updateRefundSyncStatus(id, syncStatus, errorMessage) {
+    return this.request({
+      url: `/refund/${id}/sync-status`,
+      method: 'put',
+      params: { syncStatus, errorMessage },
+    })
+  }
+
+  async verifyManagerPassword(username, password) {
+    return this.request(
+      {
+        url: '/auth/verify-manager',
+        method: 'post',
+        data: { username, password },
+      },
+      { offlineQueue: false, offlineData: null }
+    )
+  }
+
   get baseURL() {
     return baseURL
   }

@@ -7,6 +7,8 @@ import com.cashier.server.entity.member.MemberCardRecord;
 import com.cashier.server.entity.member.PointRecord;
 import com.cashier.server.entity.order.DailyReport;
 import com.cashier.server.entity.order.Order;
+import com.cashier.server.entity.order.RefundOrder;
+import com.cashier.server.entity.order.RefundOrderItem;
 import com.cashier.server.entity.order.SalesSummary;
 import com.cashier.server.entity.product.Product;
 import com.cashier.server.entity.product.ProductCategory;
@@ -788,6 +790,66 @@ public class ErpSyncServiceImpl implements ErpSyncService {
         } catch (Exception e) {
             log.error("推送盘点差异到ERP失败, diffId={}", diffId, e);
             throw new BusinessException("推送盘点差异到ERP失败: " + e.getMessage());
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public String pushRedSalesOrder(RefundOrder refundOrder, List<RefundOrderItem> items) {
+        log.info("开始推送红字销售单到ERP, refundNo={}", refundOrder.getRefundNo());
+        try {
+            Map<String, Object> redOrderData = new java.util.HashMap<>();
+            redOrderData.put("refundNo", refundOrder.getRefundNo());
+            redOrderData.put("originalOrderNo", refundOrder.getOrderNo());
+            redOrderData.put("erpOrderId", refundOrder.getErpOrderId());
+            redOrderData.put("refundType", refundOrder.getRefundType());
+            redOrderData.put("refundAmount", refundOrder.getRefundAmount());
+            redOrderData.put("originalPayAmount", refundOrder.getOriginalPayAmount());
+            redOrderData.put("refundReason", refundOrder.getRefundReason());
+            redOrderData.put("auditTime", refundOrder.getAuditTime() != null ? refundOrder.getAuditTime().toString() : null);
+            redOrderData.put("auditorName", refundOrder.getAuditorName());
+            redOrderData.put("cashierName", refundOrder.getCashierName());
+            redOrderData.put("managerName", refundOrder.getManagerName());
+            redOrderData.put("remark", refundOrder.getRemark());
+
+            List<Map<String, Object>> itemList = new ArrayList<>();
+            for (RefundOrderItem item : items) {
+                Map<String, Object> itemData = new java.util.HashMap<>();
+                itemData.put("orderItemId", item.getOrderItemId());
+                itemData.put("productId", item.getProductId());
+                itemData.put("erpGoodsId", item.getErpGoodsId());
+                itemData.put("productName", item.getProductName());
+                itemData.put("barcode", item.getBarcode());
+                itemData.put("price", item.getPrice());
+                itemData.put("originalQuantity", item.getOriginalQuantity());
+                itemData.put("refundQuantity", item.getRefundQuantity());
+                itemData.put("originalAmount", item.getOriginalAmount());
+                itemData.put("refundAmount", item.getRefundAmount());
+                itemData.put("discountAmount", item.getDiscountAmount());
+                itemList.add(itemData);
+            }
+            redOrderData.put("items", itemList);
+
+            Map<String, Object> response = erpApiClient.callErpApi("POST", "/erp/sales/red-order", redOrderData);
+            Integer code = response.get("code") != null ? Integer.valueOf(response.get("code").toString()) : null;
+
+            if (code != null && code == 200) {
+                Map<String, Object> data = (Map<String, Object>) response.get("data");
+                String erpRefundId = data != null && data.get("erpRefundId") != null
+                        ? data.get("erpRefundId").toString()
+                        : "RED" + System.currentTimeMillis();
+                log.info("推送红字销售单到ERP成功, refundNo={}, erpRefundId={}", refundOrder.getRefundNo(), erpRefundId);
+                return erpRefundId;
+            } else {
+                String message = response.get("message") != null ? response.get("message").toString() : "未知错误";
+                log.warn("推送红字销售单到ERP返回失败, refundNo={}, code={}, message={}", refundOrder.getRefundNo(), code, message);
+                throw new BusinessException("ERP返回失败: " + message);
+            }
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("推送红字销售单到ERP失败, refundNo={}", refundOrder.getRefundNo(), e);
+            throw new BusinessException("推送红字销售单到ERP失败: " + e.getMessage());
         }
     }
 }

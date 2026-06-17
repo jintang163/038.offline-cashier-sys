@@ -635,3 +635,80 @@ CREATE TABLE invoice_wallet (
     KEY idx_sync_status (sync_status),
     KEY idx_create_time (create_time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='顾客票夹表';
+
+-- =============================================
+-- 17. 退款单表
+-- =============================================
+DROP TABLE IF EXISTS refund_order;
+CREATE TABLE refund_order (
+    id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    refund_no VARCHAR(32) NOT NULL COMMENT '退款单号',
+    erp_refund_id VARCHAR(64) DEFAULT NULL COMMENT 'ERP退款单ID',
+    order_id BIGINT NOT NULL COMMENT '原订单ID',
+    order_no VARCHAR(32) NOT NULL COMMENT '原订单编号',
+    erp_order_id VARCHAR(64) DEFAULT NULL COMMENT '原ERP订单ID',
+    refund_type TINYINT NOT NULL DEFAULT 1 COMMENT '退款类型: 1-部分退款 2-整单退款',
+    refund_amount DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT '退款金额',
+    original_pay_amount DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT '原订单实付金额',
+    refund_reason VARCHAR(500) DEFAULT NULL COMMENT '退款原因',
+    audit_status TINYINT NOT NULL DEFAULT 0 COMMENT '审核状态: 0-待审核 1-审核通过 2-审核拒绝',
+    auditor_id BIGINT DEFAULT NULL COMMENT '审核人ID',
+    auditor_name VARCHAR(50) DEFAULT NULL COMMENT '审核人姓名',
+    audit_time DATETIME DEFAULT NULL COMMENT '审核时间',
+    audit_remark VARCHAR(500) DEFAULT NULL COMMENT '审核备注',
+    sync_status TINYINT DEFAULT 0 COMMENT '同步状态: 0-未同步 1-已同步 2-同步失败',
+    sync_attempts INT DEFAULT 0 COMMENT '同步重试次数',
+    sync_error_message VARCHAR(500) DEFAULT NULL COMMENT '同步错误信息',
+    sync_time DATETIME DEFAULT NULL COMMENT '同步时间',
+    erp_push_status TINYINT DEFAULT 0 COMMENT 'ERP推送状态: 0-未推送 1-已推送 2-推送失败',
+    erp_push_error VARCHAR(500) DEFAULT NULL COMMENT 'ERP推送错误',
+    erp_push_time DATETIME DEFAULT NULL COMMENT 'ERP推送时间',
+    cashier_id BIGINT DEFAULT NULL COMMENT '操作收银员ID',
+    cashier_name VARCHAR(50) DEFAULT NULL COMMENT '操作收银员姓名',
+    manager_id BIGINT DEFAULT NULL COMMENT '授权经理ID',
+    manager_name VARCHAR(50) DEFAULT NULL COMMENT '授权经理姓名',
+    remark VARCHAR(500) DEFAULT NULL COMMENT '备注',
+    create_time DATETIME DEFAULT NULL COMMENT '创建时间',
+    update_time DATETIME DEFAULT NULL COMMENT '更新时间',
+    is_deleted TINYINT DEFAULT 0 COMMENT '逻辑删除: 0-未删除 1-已删除',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_refund_no (refund_no),
+    KEY idx_order_id (order_id),
+    KEY idx_order_no (order_no),
+    KEY idx_audit_status (audit_status),
+    KEY idx_sync_status (sync_status),
+    KEY idx_erp_push_status (erp_push_status),
+    KEY idx_create_time (create_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='退款单表';
+
+-- =============================================
+-- 18. 退款单明细表
+-- =============================================
+DROP TABLE IF EXISTS refund_order_item;
+CREATE TABLE refund_order_item (
+    id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    refund_order_id BIGINT NOT NULL COMMENT '退款单ID',
+    refund_no VARCHAR(32) NOT NULL COMMENT '退款单号',
+    order_item_id BIGINT NOT NULL COMMENT '原订单明细ID',
+    product_id BIGINT NOT NULL COMMENT '商品ID',
+    erp_goods_id VARCHAR(64) DEFAULT NULL COMMENT 'ERP商品ID',
+    product_name VARCHAR(200) NOT NULL COMMENT '商品名称',
+    barcode VARCHAR(50) DEFAULT NULL COMMENT '条形码',
+    image VARCHAR(255) DEFAULT NULL COMMENT '商品图片',
+    price DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT '单价',
+    original_quantity INT NOT NULL DEFAULT 0 COMMENT '原购买数量',
+    refund_quantity INT NOT NULL DEFAULT 0 COMMENT '退款数量',
+    original_amount DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT '原购买金额',
+    refund_amount DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT '退款金额',
+    discount_amount DECIMAL(12,2) DEFAULT 0.00 COMMENT '优惠金额',
+    remark VARCHAR(500) DEFAULT NULL COMMENT '备注',
+    create_time DATETIME DEFAULT NULL COMMENT '创建时间',
+    update_time DATETIME DEFAULT NULL COMMENT '更新时间',
+    is_deleted TINYINT DEFAULT 0 COMMENT '逻辑删除: 0-未删除 1-已删除',
+    PRIMARY KEY (id),
+    KEY idx_refund_order_id (refund_order_id),
+    KEY idx_refund_no (refund_no),
+    KEY idx_order_item_id (order_item_id),
+    KEY idx_product_id (product_id),
+    KEY idx_create_time (create_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='退款单明细表';

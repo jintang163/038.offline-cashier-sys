@@ -44,4 +44,12 @@ public class AuthController {
         sysUserService.logout(token);
         return Result.success();
     }
+
+    @PostMapping("/verify-manager")
+    public Result<Map<String, Object>> verifyManager(@RequestBody Map<String, String> params) {
+        String username = params.get("username");
+        String password = params.get("password");
+        Map<String, Object> result = sysUserService.verifyManager(username, password);
+        return Result.success(result);
+    }
 }

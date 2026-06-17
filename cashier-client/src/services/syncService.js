@@ -686,6 +686,13 @@ class SyncService {
         failed: 0,
       }))
 
+      const refundResult = await this.syncRefundOrders().catch((e) => ({
+        success: false,
+        error: e.message,
+        success: 0,
+        failed: 0,
+      }))
+
       return {
         success: true,
         products: productResult,
@@ -699,6 +706,7 @@ class SyncService {
         dailyReports: dailyReportResult,
         invoices: invoiceResult,
         invoiceWallets: invoiceWalletResult,
+        refunds: refundResult,
       }
     } finally {
       this.syncing = false
@@ -726,16 +734,25 @@ class SyncService {
       const failed = await db.getFailedOrders()
       return failed.length
     })()
+    const unsyncedRefundCount = await db.getUnsyncedRefundCount()
+    const failedRefundCount = await (async () => {
+      const failed = await db.getFailedRefundOrders()
+      return failed.length
+    })()
     const lastProductSyncTime = await db.getSetting('lastProductSyncTime')
     const lastOrderSyncTime = await db.getSetting('lastOrderSyncTime')
     const lastSalesSummarySyncTime = await db.getSetting('lastSalesSummarySyncTime')
+    const lastRefundSyncTime = await db.getSetting('lastRefundSyncTime')
 
     return {
       unsyncedOrderCount: unsyncedCount,
       failedOrderCount: failedCount,
+      unsyncedRefundCount,
+      failedRefundCount,
       lastProductSyncTime,
       lastOrderSyncTime,
       lastSalesSummarySyncTime,
+      lastRefundSyncTime,
       isOnline: navigator.onLine,
       isSyncing: this.syncing,
     }
@@ -900,6 +917,151 @@ class SyncService {
       this.emit('statusChange', { type: 'printHistory', status: 'failed', error: error.message })
       throw error
     }
+  }
+
+  async syncRefundOrders(refundIds = null) {
+    if (!navigator.onLine) {
+      throw new Error('OFFLINE')
+    }
+
+    this.emit('syncStart', { type: 'refundOrders' })
+    this.emit('statusChange', { type: 'refundOrders', status: 'syncing' })
+
+    try {
+      let refundsToSync = []
+
+      if (refundIds && refundIds.length > 0) {
+        for (const id of refundIds) {
+          const refund = await db.getRefundOrderById(id)
+          if (refund && refund.sync_status !== 1) {
+            refundsToSync.push(refund)
+          }
+        }
+      } else {
+        refundsToSync = await db.getUnsyncedRefundOrders(100)
+        const failedRefunds = await db.getFailedRefundOrders()
+        refundsToSync = [...refundsToSync, ...failedRefunds]
+      }
+
+      if (refundsToSync.length === 0) {
+        this.emit('syncComplete', { type: 'refundOrders', success: true, count: 0 })
+        this.emit('statusChange', { type: 'refundOrders', status: 'success' })
+        return { success: true, count: 0 }
+      }
+
+      const results = { success: 0, failed: 0, errors: [] }
+      const batchSize = 20
+
+      for (let i = 0; i < refundsToSync.length; i += batchSize) {
+        const batch = refundsToSync.slice(i, i + batchSize)
+
+        const batchData = batch.map((r) => ({
+          id: r.id,
+          refund_no: r.refund_no,
+          erp_refund_id: r.erp_refund_id,
+          order_id: r.order_id,
+          order_no: r.order_no,
+          erp_order_id: r.erp_order_id,
+          refund_type: r.refund_type,
+          refund_amount: r.refund_amount,
+          original_pay_amount: r.original_pay_amount,
+          refund_reason: r.refund_reason,
+          audit_status: r.audit_status ?? 0,
+          auditor_id: r.auditor_id,
+          auditor_name: r.auditor_name,
+          audit_time: r.audit_time,
+          audit_remark: r.audit_remark,
+          sync_status: r.sync_status,
+          sync_attempts: r.sync_attempts || 0,
+          sync_error_message: r.sync_error,
+          sync_time: r.sync_time,
+          erp_push_status: r.erp_push_status,
+          erp_push_error: r.erp_push_error,
+          erp_push_time: r.erp_push_time,
+          cashier_id: r.cashier_id,
+          cashier_name: r.cashier_name,
+          manager_id: r.manager_id,
+          manager_name: r.manager_name,
+          remark: r.remark,
+          create_time: r.created_at,
+          items: (r.items || []).map((item) => ({
+            id: item.id,
+            refund_order_id: item.refund_order_id,
+            refund_no: item.refund_no,
+            order_item_id: item.order_item_id,
+            product_id: item.product_id,
+            erp_goods_id: item.erp_goods_id,
+            product_name: item.product_name,
+            barcode: item.barcode,
+            image: item.image,
+            price: item.price,
+            original_quantity: item.original_quantity,
+            refund_quantity: item.refund_quantity,
+            original_amount: item.original_amount,
+            refund_amount: item.refund_amount,
+            discount_amount: item.discount_amount,
+            remark: item.remark,
+          })),
+        }))
+
+        try {
+          const response = await api.batchSyncRefundOrders(batchData)
+          const result = response.data || {}
+
+          const failMap = new Map()
+          if (result.failOrders) {
+            result.failOrders.forEach((fail) => {
+              failMap.set(fail.refundNo, fail.error)
+            })
+          }
+
+          for (const refund of batch) {
+            if (failMap.has(refund.refund_no)) {
+              results.failed++
+              const error = failMap.get(refund.refund_no)
+              results.errors.push({ refundId: refund.id, refundNo: refund.refund_no, error })
+              await db.updateRefundSyncStatus(refund.id, 2, error)
+            } else {
+              await db.updateRefundSyncStatus(refund.id, 1)
+              results.success++
+            }
+          }
+        } catch (error) {
+          for (const refund of batch) {
+            results.failed++
+            results.errors.push({ refundId: refund.id, refundNo: refund.refund_no, error: error.message })
+            await db.updateRefundSyncStatus(refund.id, 2, error.message)
+          }
+        }
+      }
+
+      await db.setSetting('lastRefundSyncTime', new Date().toISOString())
+      await db.addSyncRecord('refundOrders', results.failed > 0 ? 'partial' : 'success', results)
+
+      this.emit('syncComplete', { type: 'refundOrders', success: results.failed === 0, results })
+      this.emit('statusChange', {
+        type: 'refundOrders',
+        status: results.failed === 0 ? 'success' : 'partial',
+        results,
+      })
+
+      return results
+    } catch (error) {
+      await db.addSyncRecord('refundOrders', 'failed', { error: error.message })
+      this.emit('syncComplete', { type: 'refundOrders', success: false, error: error.message })
+      this.emit('statusChange', { type: 'refundOrders', status: 'failed', error: error.message })
+      throw error
+    }
+  }
+
+  async retryFailedRefund(refundId) {
+    return this.syncRefundOrders([refundId])
+  }
+
+  async retryAllFailedRefunds() {
+    const failedRefunds = await db.getFailedRefundOrders()
+    const refundIds = failedRefunds.map((r) => r.id)
+    return this.syncRefundOrders(refundIds)
   }
 }
 

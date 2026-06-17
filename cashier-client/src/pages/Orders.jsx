@@ -24,12 +24,14 @@ import {
   SyncOutlined,
   ExclamationCircleOutlined,
   CloudUploadOutlined,
+  RollbackOutlined,
 } from '@ant-design/icons'
 import AppLayout from '../components/AppLayout'
 import db from '../utils/db'
 import syncService from '../services/syncService'
 import useNetworkStatus from '../hooks/useNetwork'
 import dayjs from 'dayjs'
+import RefundDialog from '../components/RefundDialog'
 
 const { RangePicker } = DatePicker
 
@@ -43,6 +45,8 @@ function Orders() {
   const [dateRange, setDateRange] = useState(null)
   const [detailVisible, setDetailVisible] = useState(false)
   const [currentOrder, setCurrentOrder] = useState(null)
+  const [refundDialogVisible, setRefundDialogVisible] = useState(false)
+  const [currentRefundOrder, setCurrentRefundOrder] = useState(null)
   const [selectedRowKeys, setSelectedRowKeys] = useState([])
   const [unsyncedCount, setUnsyncedCount] = useState(0)
   const [failedCount, setFailedCount] = useState(0)
@@ -120,6 +124,30 @@ function Orders() {
     } catch (error) {
       console.error('加载订单详情失败:', error)
     }
+  }
+
+  const handleOpenRefund = async (orderId) => {
+    try {
+      const order = await db.getOrderById(orderId)
+      if (!order) {
+        message.error('订单不存在')
+        return
+      }
+      if (parseFloat(order.pay_amount) <= 0) {
+        message.warning('该订单无支付金额，无法退菜')
+        return
+      }
+      setCurrentRefundOrder(order)
+      setDetailVisible(false)
+      setRefundDialogVisible(true)
+    } catch (error) {
+      console.error('打开退菜对话框失败:', error)
+      message.error('打开退菜对话框失败')
+    }
+  }
+
+  const handleRefundSuccess = () => {
+    loadOrders()
   }
 
   const handleRetryOrder = useCallback(async (orderId) => {
@@ -290,12 +318,20 @@ function Orders() {
     {
       title: '操作',
       key: 'action',
-      width: 180,
+      width: 220,
       fixed: 'right',
       render: (_, record) => (
         <Space size="small">
           <Button type="link" icon={<EyeOutlined />} onClick={() => viewOrderDetail(record.id)}>
             详情
+          </Button>
+          <Button
+            type="link"
+            icon={<RollbackOutlined />}
+            onClick={() => handleOpenRefund(record.id)}
+            disabled={parseFloat(record.pay_amount) <= 0}
+          >
+            退菜
           </Button>
           {record.sync_status !== 1 && (
             <Button
@@ -440,6 +476,16 @@ function Orders() {
           <Button key="close" onClick={() => setDetailVisible(false)}>
             关闭
           </Button>,
+          currentOrder && parseFloat(currentOrder.pay_amount) > 0 && (
+            <Button
+              key="refund"
+              type="primary"
+              icon={<RollbackOutlined />}
+              onClick={() => handleOpenRefund(currentOrder.id)}
+            >
+              申请退款
+            </Button>
+          ),
         ]}
         width={700}
       >
@@ -507,6 +553,13 @@ function Orders() {
           </>
         )}
       </Modal>
+
+      <RefundDialog
+        visible={refundDialogVisible}
+        order={currentRefundOrder}
+        onClose={() => setRefundDialogVisible(false)}
+        onSuccess={handleRefundSuccess}
+      />
     </AppLayout>
   )
 }
