@@ -224,48 +224,150 @@ class DisasterService {
     return localStorage.getItem(DISASTER_TOKEN_KEY) || ''
   }
 
-  async syncDisasterData(token, dataHours) {
+  async syncDisasterData(token, dataHours, onProgress) {
     const drToken = token || this.getDisasterToken()
     if (!drToken) {
       throw new Error('灾备Token不存在')
     }
 
+    if (onProgress) onProgress(10)
+
+    const verified = await this.verifyDisasterToken(drToken)
+    const mainDeviceIp = verified?.data?.mainDevice?.ipAddress || verified?.data?.mainDevice?.ip_address
+
+    if (onProgress) onProgress(20)
+
+    let recoveryData = null
+    let source = 'cloud'
+
     try {
-      const response = await api.getDisasterRecoveryData(drToken, dataHours)
-      const data = response.data
-      await this.importRecoveryData(data)
-      return { success: true, data }
-    } catch (error) {
-      console.error('同步灾备数据失败:', error)
-      return { success: false, error: error.message }
+      const result = await this._syncFromCloud(drToken, dataHours)
+      recoveryData = result.data
+      source = 'cloud'
+    } catch (cloudError) {
+      console.warn('云端同步失败，尝试局域网同步:', cloudError.message)
+
+      if (mainDeviceIp && mainDeviceIp !== '127.0.0.1' && mainDeviceIp !== 'localhost') {
+        try {
+          recoveryData = await this._syncFromLocalNetwork(mainDeviceIp, drToken, dataHours)
+          source = 'lan'
+        } catch (lanError) {
+          console.error('局域网同步也失败:', lanError.message)
+          return {
+            success: false,
+            error: `云端同步失败: ${cloudError.message}，局域网同步失败: ${lanError.message}`,
+          }
+        }
+      } else {
+        return { success: false, error: cloudError.message }
+      }
+    }
+
+    if (onProgress) onProgress(50)
+
+    if (!recoveryData) {
+      return { success: false, error: '未获取到灾备数据' }
+    }
+
+    await this.importRecoveryData(recoveryData, onProgress)
+
+    return { success: true, data: recoveryData, source }
+  }
+
+  async _syncFromCloud(token, dataHours) {
+    return await api.getDisasterRecoveryData(token, dataHours)
+  }
+
+  async _syncFromLocalNetwork(mainDeviceIp, token, dataHours) {
+    const originalBaseURL = api.baseURL
+    const lanBaseURL = `http://${mainDeviceIp}:8080`
+
+    try {
+      const response = await fetch(`${lanBaseURL}/api/disaster/data?token=${encodeURIComponent(token)}&dataHours=${dataHours || 1}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        timeout: 10000,
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`)
+      }
+
+      const json = await response.json()
+      if (json.code === 200 || json.success) {
+        return json.data
+      }
+      throw new Error(json.message || '局域网同步失败')
+    } finally {
     }
   }
 
-  async importRecoveryData(data) {
+  async importRecoveryData(data, onProgress) {
     const batchSize = 100
+    let processedCount = 0
+    const totalItems = (data.products?.length || 0) + (data.orders?.length || 0) +
+      (data.refund_orders?.length || 0) + (data.payments?.length || 0)
+
+    const updateProgress = () => {
+      if (onProgress && totalItems > 0) {
+        const progress = Math.min(95, 50 + Math.floor((processedCount / totalItems) * 45))
+        onProgress(progress)
+      }
+    }
 
     try {
       if (data.products && data.products.length > 0) {
+        const stockMap = {}
+        if (data.stocks && data.stocks.length > 0) {
+          for (const s of data.stocks) {
+            const productId = s.productId || s.product_id || s.id
+            if (productId) {
+              stockMap[productId] = s.stock ?? s.availableQty ?? s.available_qty ?? 0
+            }
+          }
+        }
+
         const products = data.products.map((p) => ({
-          ...p,
+          id: p.id,
+          erp_goods_id: p.erpGoodsId || p.erp_goods_id || '',
+          product_name: p.productName || p.product_name || p.name || '',
+          category_id: p.categoryId || p.category_id || 0,
+          category_name: p.categoryName || p.category_name || '',
+          barcode: p.barcode || '',
+          price: p.price ?? 0,
+          original_price: p.originalPrice ?? p.price ?? 0,
+          unit: p.unit || '',
+          image: p.image || '',
+          description: p.description || '',
+          stock: stockMap[p.id] ?? stockMap[p.erpGoodsId] ?? p.stock ?? 0,
+          status: p.status ?? 1,
+          sort: p.sort ?? 0,
+          created_at: p.createdAt || p.createTime || p.created_at || new Date().toISOString(),
+          updated_at: data.syncTime || data.sync_time || new Date().toISOString(),
           sync_status: 1,
-          updated_at: data.sync_time || new Date().toISOString(),
         }))
+
         for (let i = 0; i < products.length; i += batchSize) {
           const batch = products.slice(i, i + batchSize)
           await db.products.bulkPut(batch)
+          processedCount += batch.length
+          updateProgress()
         }
       }
 
-      if (data.stocks && data.stocks.length > 0) {
-        const stocks = data.stocks.map((s) => ({
-          ...s,
-          sync_status: 1,
-          updated_at: data.sync_time || new Date().toISOString(),
+      if (data.categories && data.categories.length > 0) {
+        const categories = data.categories.map((c) => ({
+          id: c.id,
+          name: c.name || c.categoryName || '',
+          sort: c.sort ?? 0,
+          status: c.status ?? 1,
+          created_at: c.createdAt || c.createTime || new Date().toISOString(),
+          updated_at: data.syncTime || data.sync_time || new Date().toISOString(),
         }))
-        for (let i = 0; i < stocks.length; i += batchSize) {
-          const batch = stocks.slice(i, i + batchSize)
-          await db.product_stocks.bulkPut(batch)
+        for (let i = 0; i < categories.length; i += batchSize) {
+          await db.categories.bulkPut(categories.slice(i, i + batchSize))
         }
       }
 
@@ -275,40 +377,64 @@ class DisasterService {
           try {
             if (order.itemsJson) {
               items = JSON.parse(order.itemsJson)
+            } else if (order.items && Array.isArray(order.items)) {
+              items = order.items
             }
           } catch (e) {
             items = []
           }
 
+          const orderStatus = order.orderStatus ?? order.order_status ?? 2
+          const payStatus = order.payStatus ?? order.pay_status ?? (orderStatus === 2 ? 1 : 0)
+
           const orderData = {
             id: order.id,
-            order_no: order.orderNo,
-            erp_order_id: order.erpOrderId,
-            order_type: order.orderType || 1,
-            total_amount: order.orderAmount,
-            pay_amount: order.payAmount,
-            discount_amount: order.discountAmount,
-            pay_status: order.payStatus,
-            pay_type: order.payType,
-            buyer_name: order.buyerName,
-            buyer_phone: order.buyerPhone,
-            item_count: order.itemCount,
-            remark: order.remark,
+            order_no: order.orderNo || order.order_no || '',
+            erp_order_id: order.erpOrderId || order.erp_order_id || '',
+            total_amount: order.totalAmount ?? order.total_amount ?? order.orderAmount ?? 0,
+            discount_amount: order.discountAmount ?? order.discount_amount ?? 0,
+            pay_amount: order.payAmount ?? order.pay_amount ?? 0,
+            pay_type: order.payType ?? order.pay_type ?? order.pay_method ?? 1,
+            pay_status: payStatus,
+            order_status: orderStatus,
             sync_status: 1,
-            sync_time: data.sync_time,
-            created_at: order.createTime,
-            items: items,
+            sync_attempts: 0,
+            sync_error: '',
+            cashier_id: order.cashierId || order.cashier_id || 0,
+            cashier_name: order.cashierName || order.cashier_name || '',
+            member_id: order.memberId || order.member_id || 0,
+            member_name: order.memberName || order.member_name || '',
+            remark: order.remark || '',
+            created_at: order.createdAt || order.createTime || order.created_at || new Date().toISOString(),
+            synced_at: data.syncTime || data.sync_time || new Date().toISOString(),
           }
 
           const existing = await db.orders.get(order.id)
           if (!existing) {
             await db.orders.put(orderData)
-            for (const item of items) {
-              await db.order_items.put({
-                ...item,
-                order_id: order.id,
-                order_no: order.orderNo,
-              })
+            processedCount++
+            updateProgress()
+
+            if (items.length > 0) {
+              for (const item of items) {
+                await db.order_items.put({
+                  id: item.id,
+                  order_id: order.id,
+                  product_id: item.productId || item.product_id || item.id || 0,
+                  erp_goods_id: item.erpGoodsId || item.erp_goods_id || '',
+                  product_name: item.productName || item.product_name || item.name || '',
+                  barcode: item.barcode || '',
+                  image: item.image || '',
+                  price: item.price ?? 0,
+                  quantity: item.quantity ?? item.qty ?? 1,
+                  subtotal: item.subtotal ?? (item.price || 0) * (item.quantity || item.qty || 1),
+                  total_amount: item.totalAmount ?? item.total_amount ?? item.subtotal ?? 0,
+                  discount_amount: item.discountAmount ?? item.discount_amount ?? 0,
+                  pay_amount: item.payAmount ?? item.pay_amount ?? item.subtotal ?? 0,
+                  category_id: item.categoryId || item.category_id || 0,
+                  created_at: item.createdAt || order.createdAt || new Date().toISOString(),
+                })
+              }
             }
           }
         }
@@ -320,6 +446,8 @@ class DisasterService {
           try {
             if (refund.itemsJson) {
               items = JSON.parse(refund.itemsJson)
+            } else if (refund.items && Array.isArray(refund.items)) {
+              items = refund.items
             }
           } catch (e) {
             items = []
@@ -329,24 +457,57 @@ class DisasterService {
           if (!existing) {
             const refundId = await db.refund_orders.put({
               id: refund.id,
-              refund_no: refund.refundNo,
-              order_id: refund.orderId,
-              order_no: refund.orderNo,
-              refund_type: refund.refundType,
-              refund_amount: refund.refundAmount,
-              original_pay_amount: refund.originalPayAmount,
-              refund_reason: refund.refundReason,
-              audit_status: refund.auditStatus,
+              refund_no: refund.refundNo || refund.refund_no || '',
+              erp_refund_id: refund.erpRefundId || refund.erp_refund_id || '',
+              order_id: refund.orderId || refund.order_id || 0,
+              order_no: refund.orderNo || refund.order_no || '',
+              erp_order_id: refund.erpOrderId || refund.erp_order_id || '',
+              refund_type: refund.refundType ?? refund.refund_type ?? 1,
+              refund_amount: refund.refundAmount ?? refund.refund_amount ?? 0,
+              original_pay_amount: refund.originalPayAmount ?? refund.original_pay_amount ?? 0,
+              refund_reason: refund.refundReason || refund.refund_reason || '',
+              audit_status: refund.auditStatus ?? refund.audit_status ?? 0,
+              auditor_id: refund.auditorId || refund.auditor_id || 0,
+              auditor_name: refund.auditorName || refund.auditor_name || '',
+              audit_time: refund.auditTime || refund.audit_time || null,
+              audit_remark: refund.auditRemark || refund.audit_remark || '',
               sync_status: 1,
-              erp_push_status: 0,
-              created_at: refund.createTime,
-              items: items,
+              sync_attempts: 0,
+              sync_error: '',
+              sync_time: data.syncTime || data.sync_time || new Date().toISOString(),
+              erp_push_status: refund.erpPushStatus ?? refund.erp_push_status ?? 0,
+              erp_push_error: '',
+              erp_push_time: null,
+              cashier_id: refund.cashierId || refund.cashier_id || 0,
+              cashier_name: refund.cashierName || refund.cashier_name || '',
+              manager_id: refund.managerId || refund.manager_id || 0,
+              manager_name: refund.managerName || refund.manager_name || '',
+              remark: refund.remark || '',
+              created_at: refund.createdAt || refund.createTime || refund.created_at || new Date().toISOString(),
+              updated_at: refund.updatedAt || refund.updateTime || new Date().toISOString(),
             })
+            processedCount++
+            updateProgress()
+
             for (const item of items) {
               await db.refund_order_items.put({
-                ...item,
+                id: item.id,
                 refund_order_id: refund.id || refundId,
-                refund_no: refund.refundNo,
+                refund_no: refund.refundNo || refund.refund_no || '',
+                order_item_id: item.orderItemId || item.order_item_id || 0,
+                product_id: item.productId || item.product_id || item.id || 0,
+                erp_goods_id: item.erpGoodsId || item.erp_goods_id || '',
+                product_name: item.productName || item.product_name || item.name || '',
+                barcode: item.barcode || '',
+                image: item.image || '',
+                price: item.price ?? 0,
+                original_quantity: item.originalQuantity ?? item.original_quantity ?? item.quantity ?? 1,
+                refund_quantity: item.refundQuantity ?? item.refund_quantity ?? item.quantity ?? 1,
+                original_amount: item.originalAmount ?? item.original_amount ?? (item.price || 0) * (item.originalQuantity || item.quantity || 1),
+                refund_amount: item.refundAmount ?? item.refund_amount ?? (item.price || 0) * (item.refundQuantity || item.quantity || 1),
+                discount_amount: item.discountAmount ?? item.discount_amount ?? 0,
+                remark: item.remark || '',
+                created_at: item.createdAt || refund.createdAt || new Date().toISOString(),
               })
             }
           }
@@ -354,26 +515,34 @@ class DisasterService {
       }
 
       if (data.payments && data.payments.length > 0) {
-        for (let i = 0; i < data.payments.length; i += batchSize) {
-          const batch = data.payments.slice(i, i + batchSize).map((p) => ({
-            id: p.id,
-            order_id: p.orderId,
-            order_no: p.orderNo,
-            pay_method: p.payMethod,
-            pay_amount: p.payAmount,
-            transaction_id: p.transactionId,
-            pay_status: p.payStatus,
-            pay_time: p.payTime,
-          }))
+        const payments = data.payments.map((p) => ({
+          id: p.id,
+          order_id: p.orderId || p.order_id || 0,
+          payment_no: p.paymentNo || p.payment_no || '',
+          pay_type: p.payType ?? p.pay_type ?? p.pay_method ?? 1,
+          pay_amount: p.payAmount ?? p.pay_amount ?? 0,
+          pay_status: p.payStatus ?? p.pay_status ?? 1,
+          pay_time: p.payTime || p.pay_time || null,
+          transaction_id: p.transactionId || p.transaction_id || '',
+          created_at: p.createdAt || p.createTime || new Date().toISOString(),
+        }))
+
+        for (let i = 0; i < payments.length; i += batchSize) {
+          const batch = payments.slice(i, i + batchSize)
           await db.order_payments.bulkPut(batch)
+          processedCount += batch.length
+          updateProgress()
         }
       }
+
+      if (onProgress) onProgress(100)
 
       await db.setSetting('lastDisasterSyncTime', new Date().toISOString())
       message.success(`灾备数据同步完成，共恢复：订单 ${data.orders?.length || 0} 单，商品 ${data.products?.length || 0} 个`)
       return true
     } catch (error) {
       console.error('导入灾备数据失败:', error)
+      message.error('数据导入失败: ' + error.message)
       throw error
     }
   }
