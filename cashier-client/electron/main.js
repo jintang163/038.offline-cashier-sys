@@ -348,3 +348,76 @@ ipcMain.handle('log-upload', async (event, { uploadNo, filePath, apiBaseUrl, tok
     return { success: false, error: error.message }
   }
 })
+
+ipcMain.handle('printer-status', async (event, { printer }) => {
+  try {
+    const result = {
+      success: true,
+      data: {
+        printerName: printer?.printer_name || printer?.name || 'Unknown',
+        connectionType: printer?.connection_type || 'unknown',
+        status: 1,
+        error: null,
+      },
+    }
+
+    if (!printer) {
+      result.data.status = 3
+      result.data.error = '打印机未配置'
+      return result
+    }
+
+    if (printer.status !== undefined && printer.status !== 1) {
+      result.data.status = 3
+      result.data.error = '打印机已禁用'
+      return result
+    }
+
+    if (printer.connection_type === 'network' && printer.ip_address) {
+      const net = require('net')
+      const host = printer.ip_address
+      const port = printer.port || 9100
+
+      return new Promise((resolve) => {
+        const socket = new net.Socket()
+        const timeout = setTimeout(() => {
+          socket.destroy()
+          result.data.status = 0
+          result.data.error = `连接超时 (${host}:${port})`
+          resolve(result)
+        }, 3000)
+
+        socket.connect(port, host, () => {
+          clearTimeout(timeout)
+          socket.destroy()
+          result.data.status = 1
+          resolve(result)
+        })
+
+        socket.on('error', (err) => {
+          clearTimeout(timeout)
+          result.data.status = 0
+          result.data.error = `连接失败: ${err.message}`
+          resolve(result)
+        })
+      })
+    }
+
+    if (printer.connection_type === 'bluetooth' && printer.bluetooth_address) {
+      result.data.status = 2
+      result.data.error = '蓝牙打印机状态检测暂不支持，以实际打印结果为准'
+      return result
+    }
+
+    if (printer.connection_type === 'usb' || printer.connection_type === 'local') {
+      result.data.status = 2
+      result.data.error = 'USB/本地打印机状态检测依赖系统驱动，以实际打印结果为准'
+      return result
+    }
+
+    return result
+  } catch (error) {
+    console.error('Printer status check error:', error)
+    return { success: false, error: error.message }
+  }
+})

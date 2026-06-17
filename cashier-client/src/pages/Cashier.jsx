@@ -13,6 +13,7 @@ import recommendService from '../services/intelligentRecommendService'
 import dailyReportService from '../services/dailyReportService'
 import invoiceService from '../services/invoiceService'
 import fraudDetectionService from '../services/fraudDetectionService'
+import loggerService from '../services/loggerService'
 import dayjs from 'dayjs'
 
 const { Option } = Select
@@ -260,11 +261,23 @@ function Cashier() {
       message.warning('该商品库存不足')
       return
     }
+    loggerService.info('Cashier', 'Add product to cart', {
+      productId: product.id,
+      productName: product.product_name || product.name,
+      price: product.price,
+      barcode: product.barcode,
+    })
     setCart((prevCart) => {
       const existing = prevCart.find((item) => item.product_id === product.id)
       if (existing) {
         if (existing.quantity >= product.stock) {
           message.warning('该商品库存不足')
+          loggerService.warn('Cashier', 'Product stock insufficient', {
+            productId: product.id,
+            productName: product.product_name || product.name,
+            stock: product.stock,
+            requested: existing.quantity + 1,
+          })
           return prevCart
         }
         return prevCart.map((item) =>
@@ -307,8 +320,18 @@ function Cashier() {
     const product = products.find((p) => p.id === productId)
     if (product && quantity > product.stock) {
       message.warning('该商品库存不足')
+      loggerService.warn('Cashier', 'Product stock insufficient on update quantity', {
+        productId,
+        productName: product.product_name,
+        stock: product.stock,
+        requested: quantity,
+      })
       return
     }
+    loggerService.info('Cashier', 'Update cart quantity', {
+      productId,
+      quantity,
+    })
     setCart((prevCart) =>
       prevCart.map((item) =>
         item.product_id === productId
@@ -326,6 +349,7 @@ function Cashier() {
   }
 
   const removeFromCart = (productId) => {
+    loggerService.info('Cashier', 'Remove product from cart', { productId })
     setCart((prevCart) => prevCart.filter((item) => item.product_id !== productId))
   }
 
@@ -333,7 +357,10 @@ function Cashier() {
     Modal.confirm({
       title: '确认清空购物车？',
       content: '清空后所有商品将被移除',
-      onOk: () => setCart([]),
+      onOk: () => {
+        loggerService.info('Cashier', 'Clear cart')
+        setCart([])
+      },
     })
   }
 
@@ -466,54 +493,120 @@ function Cashier() {
       const available = (card.balance || 0) - (card.reserved_balance || 0)
       if (available < payAmount) {
         message.error(`储值卡余额不足，可用余额：¥${available.toFixed(2)}`)
+        loggerService.warn('Cashier', 'Member card balance insufficient', {
+          cardId: selectedCardId,
+          available: available.toFixed(2),
+          required: payAmount.toFixed(2),
+        })
         return
       }
     }
 
+    loggerService.info('Cashier', 'Open checkout modal', {
+      itemCount: totalItems,
+      totalAmount: totalAmount.toFixed(2),
+      payAmount: payAmount.toFixed(2),
+      payType,
+      memberId: currentMember?.id || null,
+    })
     setPayModalVisible(true)
   }
 
   const createOrderAndProcess = async (orderData, orderNo) => {
-    const order = await db.createOrder(orderData)
-
-    message.success(`订单 ${orderNo} 创建成功`)
-
-    try {
-      await kitchenPrintService.printOrder({ ...orderData, order_no: orderNo, id: order?.id })
-    } catch (printErr) {
-      console.warn('厨房打印提交失败，订单已保存:', printErr)
-      message.warning('厨房打印提交失败，可在设置中重试')
-    }
-    setCart([])
-    setDiscount(0)
-    setUsePoints(false)
-    setDeductPoints(0)
-    setPayModalVisible(false)
-    setSelectedCardId(null)
-    loadProducts(activeCategory)
+    loggerService.info('Cashier', 'Creating order', {
+      orderNo,
+      totalAmount: orderData.total_amount,
+      payAmount: orderData.pay_amount,
+      payType: orderData.pay_type,
+      itemCount: (orderData.items || []).length,
+      isOnline,
+    })
 
     try {
-      dailyReportService.generateTodayReport().catch(e => console.warn('生成当日日报失败:', e))
-    } catch (e) {
-      console.warn('生成当日日报失败:', e)
-    }
+      const order = await db.createOrder(orderData)
 
-    try {
-      invoiceService.checkOrderInvoiceEligibility(order).catch(e => console.warn('检查发票资格失败:', e))
-    } catch (e) {
-      console.warn('检查发票资格失败:', e)
-    }
+      message.success(`订单 ${orderNo} 创建成功`)
+      loggerService.info('Cashier', 'Order created successfully', {
+        orderNo,
+        orderId: order?.id,
+      })
 
-    try {
-      syncService.triggerSync().catch(e => console.warn('触发同步失败:', e))
-    } catch (e) {
-      console.warn('触发同步失败:', e)
-    }
+      try {
+        await kitchenPrintService.printOrder({ ...orderData, order_no: orderNo, id: order?.id })
+        loggerService.info('Cashier', 'Kitchen print submitted', { orderNo })
+      } catch (printErr) {
+        console.warn('厨房打印提交失败，订单已保存:', printErr)
+        message.warning('厨房打印提交失败，可在设置中重试')
+        loggerService.warn('Cashier', 'Kitchen print failed', {
+          orderNo,
+          error: printErr.message,
+        })
+      }
+      setCart([])
+      setDiscount(0)
+      setUsePoints(false)
+      setDeductPoints(0)
+      setPayModalVisible(false)
+      setSelectedCardId(null)
+      loadProducts(activeCategory)
 
-    return order
+      try {
+        dailyReportService.generateTodayReport().catch(e => {
+          console.warn('生成当日日报失败:', e)
+          loggerService.warn('Cashier', 'Generate daily report failed', { error: e.message })
+        })
+      } catch (e) {
+        console.warn('生成当日日报失败:', e)
+        loggerService.warn('Cashier', 'Generate daily report exception', { error: e.message })
+      }
+
+      try {
+        invoiceService.checkOrderInvoiceEligibility(order).catch(e => {
+          console.warn('检查发票资格失败:', e)
+          loggerService.warn('Cashier', 'Check invoice eligibility failed', { orderNo, error: e.message })
+        })
+      } catch (e) {
+        console.warn('检查发票资格失败:', e)
+        loggerService.warn('Cashier', 'Check invoice eligibility exception', { orderNo, error: e.message })
+      }
+
+      try {
+        syncService.triggerSync().catch(e => {
+          console.warn('触发同步失败:', e)
+          loggerService.warn('Cashier', 'Trigger sync failed', { orderNo, error: e.message })
+        })
+      } catch (e) {
+        console.warn('触发同步失败:', e)
+        loggerService.warn('Cashier', 'Trigger sync exception', { orderNo, error: e.message })
+      }
+
+      return order
+    } catch (error) {
+      loggerService.error('Cashier', 'Create order failed', {
+        orderNo,
+        error: error.message,
+        stack: error.stack,
+      })
+      message.error('订单创建失败: ' + error.message)
+      throw error
+    }
   }
 
   const handlePayment = async () => {
+    loggerService.info('Cashier', 'Starting payment process', {
+      itemCount: totalItems,
+      totalAmount: Number(totalAmount.toFixed(2)),
+      payAmount: Number(payAmount.toFixed(2)),
+      payType,
+      discountAmount: Number(discount),
+      memberDiscount,
+      pointsValue: Number(pointsValue.toFixed(2)),
+      deductPoints,
+      memberId: currentMember?.id || null,
+      selectedCardId,
+      isOnline,
+    })
+
     try {
       const userInfo = JSON.parse(localStorage.getItem('userInfo') || '{}')
       const orderNo = `ORD${Date.now()}${Math.random().toString(36).substr(2, 4)}`
@@ -523,6 +616,15 @@ function Cashier() {
         payAmount,
         memberDiscount
       )
+
+      if (riskResult.isRisk && riskResult.shouldLock) {
+        loggerService.warn('Cashier', 'Payment locked due to discount risk', {
+          orderNo,
+          discountPercent: riskResult.discountPercent,
+          totalAmount: Number(totalAmount.toFixed(2)),
+          payAmount: Number(payAmount.toFixed(2)),
+        })
+      }
 
       if (riskResult.isRisk && riskResult.shouldLock) {
         const lockData = await fraudDetectionService.createLock(
@@ -707,6 +809,13 @@ function Cashier() {
       }
     } catch (error) {
       console.error('Payment failed:', error)
+      loggerService.error('Cashier', 'Payment process failed', {
+        error: error.message,
+        stack: error.stack,
+        payType,
+        totalAmount: Number(totalAmount.toFixed(2)),
+        payAmount: Number(payAmount.toFixed(2)),
+      })
       message.error('结算失败：' + error.message)
     }
   }

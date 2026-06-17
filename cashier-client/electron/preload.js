@@ -33,4 +33,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getDiskInfo: (targetPath) => ipcRenderer.invoke('disk-info', { targetPath }),
   logUpload: (uploadNo, filePath, apiBaseUrl, token) =>
     ipcRenderer.invoke('log-upload', { uploadNo, filePath, apiBaseUrl, token }),
+  checkPrinterStatus: (printer) => ipcRenderer.invoke('printer-status', { printer }),
 })

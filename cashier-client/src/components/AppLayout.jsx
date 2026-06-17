@@ -21,6 +21,7 @@ import {
   WarningOutlined,
   BellOutlined,
   AlertOutlined,
+  MonitorOutlined,
 } from '@ant-design/icons'
 import useNetworkStatus from '../hooks/useNetwork'
 import DisasterBadge from './DisasterBadge'
@@ -133,6 +134,12 @@ function AppLayout({ children }) {
           onClick: () => navigate('/fraud/alerts'),
         },
       ],
+    },
+    {
+      key: '/device-monitor',
+      icon: <MonitorOutlined />,
+      label: '设备监控中心',
+      onClick: () => navigate('/device-monitor'),
     },
     {
       key: 'logout',

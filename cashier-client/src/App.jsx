@@ -26,6 +26,7 @@ import ErpProductSyncStrategyPage from './pages/erp/ErpProductSyncStrategyPage'
 import ErpMonitorDashboard from './pages/erp/ErpMonitorDashboard'
 import SuspiciousStores from './pages/fraud/SuspiciousStores'
 import FraudAlerts from './pages/fraud/FraudAlerts'
+import DeviceMonitor from './pages/DeviceMonitor'
 
 function App() {
   const [dbInit, setDbInit] = useState(false)
@@ -213,6 +214,14 @@ function App() {
         element={
           <ProtectedRoute>
             <FraudAlerts />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/device-monitor"
+        element={
+          <ProtectedRoute>
+            <DeviceMonitor />
           </ProtectedRoute>
         }
       />

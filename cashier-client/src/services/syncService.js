@@ -3,6 +3,7 @@ import api from '../api/request'
 import dailyReportService from './dailyReportService'
 import invoiceService from './invoiceService'
 import fraudDetectionService from './fraudDetectionService'
+import loggerService from './loggerService'
 
 class SyncService {
   constructor() {
@@ -141,9 +142,13 @@ class SyncService {
 
   async syncOrders(orderIds = null) {
     if (!navigator.onLine) {
+      loggerService.warn('SyncService', 'Cannot sync orders: offline')
       throw new Error('OFFLINE')
     }
 
+    loggerService.info('SyncService', 'Starting orders sync', {
+      specifiedOrderIds: orderIds ? orderIds.length : null,
+    })
     this.emit('syncStart', { type: 'orders' })
     this.emit('statusChange', { type: 'orders', status: 'syncing' })
 
@@ -164,11 +169,13 @@ class SyncService {
       }
 
       if (ordersToSync.length === 0) {
+        loggerService.info('SyncService', 'Orders sync: nothing to sync')
         this.emit('syncComplete', { type: 'orders', success: true, count: 0 })
         this.emit('statusChange', { type: 'orders', status: 'success' })
         return { success: true, count: 0 }
       }
 
+      loggerService.info('SyncService', `Orders sync: ${ordersToSync.length} orders to sync`)
       const results = { success: 0, failed: 0, errors: [] }
 
       const batchSize = 20
@@ -233,6 +240,10 @@ class SyncService {
               const error = failOrderMap.get(order.order_no)
               results.errors.push({ orderId: order.id, orderNo: order.order_no, error })
               await db.updateOrderSyncStatus(order.id, 2, error)
+              loggerService.warn('SyncService', 'Order sync failed', {
+                orderNo: order.order_no,
+                error,
+              })
             } else {
               await db.updateOrderSyncStatus(order.id, 1)
               results.success++
@@ -243,6 +254,10 @@ class SyncService {
             results.failed++
             results.errors.push({ orderId: order.id, orderNo: order.order_no, error: error.message })
             await db.updateOrderSyncStatus(order.id, 2, error.message)
+            loggerService.warn('SyncService', 'Order sync batch failed', {
+              orderNo: order.order_no,
+              error: error.message,
+            })
           }
         }
       }
@@ -250,6 +265,10 @@ class SyncService {
       await db.setSetting('lastOrderSyncTime', new Date().toISOString())
       await db.addSyncRecord('orders', results.failed > 0 ? 'partial' : 'success', results)
 
+      loggerService.info('SyncService', 'Orders sync completed', {
+        success: results.success,
+        failed: results.failed,
+      })
       this.emit('syncComplete', { type: 'orders', success: results.failed === 0, results })
       this.emit('statusChange', {
         type: 'orders',
@@ -260,6 +279,7 @@ class SyncService {
       return results
     } catch (error) {
       await db.addSyncRecord('orders', 'failed', { error: error.message })
+      loggerService.error('SyncService', 'Orders sync failed', { error: error.message })
       this.emit('syncComplete', { type: 'orders', success: false, error: error.message })
       this.emit('statusChange', { type: 'orders', status: 'failed', error: error.message })
       throw error

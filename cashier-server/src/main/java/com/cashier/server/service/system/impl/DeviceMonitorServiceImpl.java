@@ -488,4 +488,220 @@ public class DeviceMonitorServiceImpl extends ServiceImpl<CashierDeviceMapper, C
 
         return result;
     }
+
+    @Override
+    public Map<String, Object> getLogAnalysisSummary(LocalDate startDate, LocalDate endDate, String deviceNo) {
+        Map<String, Object> result = new HashMap<>();
+
+        if (startDate == null) {
+            startDate = LocalDate.now().minusDays(7);
+        }
+        if (endDate == null) {
+            endDate = LocalDate.now();
+        }
+
+        LocalDateTime startTime = startDate.atStartOfDay();
+        LocalDateTime endTime = endDate.atTime(23, 59, 59);
+
+        LambdaQueryWrapper<DeviceSelfCheckLog> checkWrapper = new LambdaQueryWrapper<>();
+        checkWrapper.ge(DeviceSelfCheckLog::getCreateTime, startTime)
+                .le(DeviceSelfCheckLog::getCreateTime, endTime);
+        if (StringUtils.hasText(deviceNo)) {
+            checkWrapper.eq(DeviceSelfCheckLog::getDeviceNo, deviceNo);
+        }
+        List<DeviceSelfCheckLog> checkLogs = selfCheckLogMapper.selectList(checkWrapper);
+
+        long totalChecks = checkLogs.size();
+        long normalChecks = checkLogs.stream().filter(l -> l.getCheckStatus() != null && l.getCheckStatus() == 1).count();
+        long warningChecks = checkLogs.stream().filter(l -> l.getCheckStatus() != null && l.getCheckStatus() == 2).count();
+        long abnormalChecks = checkLogs.stream().filter(l -> l.getCheckStatus() != null && l.getCheckStatus() == 3).count();
+
+        long networkAbnormal = checkLogs.stream().filter(l -> l.getNetworkStatus() != null && l.getNetworkStatus() == 0).count();
+        long printerAbnormal = checkLogs.stream().filter(l -> l.getPrinterStatus() != null && (l.getPrinterStatus() == 0 || l.getPrinterStatus() == 3)).count();
+        long storageWarning = checkLogs.stream().filter(l -> l.getStorageStatus() != null && (l.getStorageStatus() == 1 || l.getStorageStatus() == 2)).count();
+
+        result.put("startDate", startDate.toString());
+        result.put("endDate", endDate.toString());
+        result.put("totalChecks", totalChecks);
+        result.put("normalChecks", normalChecks);
+        result.put("warningChecks", warningChecks);
+        result.put("abnormalChecks", abnormalChecks);
+        result.put("networkAbnormalCount", networkAbnormal);
+        result.put("printerAbnormalCount", printerAbnormal);
+        result.put("storageWarningCount", storageWarning);
+
+        double normalRate = totalChecks > 0 ? (normalChecks * 100.0 / totalChecks) : 0;
+        result.put("normalRate", String.format("%.2f", normalRate) + "%");
+
+        LambdaQueryWrapper<DeviceLogUpload> uploadWrapper = new LambdaQueryWrapper<>();
+        uploadWrapper.ge(DeviceLogUpload::getCreateTime, startTime)
+                .le(DeviceLogUpload::getCreateTime, endTime);
+        if (StringUtils.hasText(deviceNo)) {
+            uploadWrapper.eq(DeviceLogUpload::getDeviceNo, deviceNo);
+        }
+        List<DeviceLogUpload> uploadLogs = logUploadMapper.selectList(uploadWrapper);
+
+        long totalUploads = uploadLogs.size();
+        long successUploads = uploadLogs.stream().filter(l -> l.getUploadStatus() != null && l.getUploadStatus() == 2).count();
+        long failedUploads = uploadLogs.stream().filter(l -> l.getUploadStatus() != null && l.getUploadStatus() == 3).count();
+        long pendingPulls = uploadLogs.stream().filter(l -> l.getPullStatus() != null && l.getPullStatus() == 1).count();
+        long completedPulls = uploadLogs.stream().filter(l -> l.getPullStatus() != null && l.getPullStatus() == 3).count();
+
+        result.put("totalLogUploads", totalUploads);
+        result.put("successLogUploads", successUploads);
+        result.put("failedLogUploads", failedUploads);
+        result.put("pendingLogPulls", pendingPulls);
+        result.put("completedLogPulls", completedPulls);
+
+        double uploadSuccessRate = totalUploads > 0 ? (successUploads * 100.0 / totalUploads) : 0;
+        result.put("uploadSuccessRate", String.format("%.2f", uploadSuccessRate) + "%");
+
+        long totalFileSize = uploadLogs.stream()
+                .filter(l -> l.getFileSize() != null)
+                .mapToLong(DeviceLogUpload::getFileSize)
+                .sum();
+        result.put("totalLogFileSize", totalFileSize);
+        result.put("totalLogFileSizeMB", String.format("%.2f", totalFileSize / 1024.0 / 1024.0));
+
+        return result;
+    }
+
+    @Override
+    public List<Map<String, Object>> getDeviceListByLocation() {
+        List<Map<String, Object>> result = new java.util.ArrayList<>();
+
+        LambdaQueryWrapper<CashierDevice> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(CashierDevice::getIsActive, 1)
+                .orderByDesc(CashierDevice::getLastHeartbeat);
+        List<CashierDevice> allDevices = list(wrapper);
+
+        LocalDateTime cutoffTime = LocalDateTime.now().minusSeconds(HEARTBEAT_OFFLINE_SECONDS);
+
+        Map<String, List<CashierDevice>> locationMap = new HashMap<>();
+        for (CashierDevice device : allDevices) {
+            String location = StringUtils.hasText(device.getLocation()) ? device.getLocation() : "未分配门店";
+            locationMap.computeIfAbsent(location, k -> new java.util.ArrayList<>()).add(device);
+        }
+
+        for (Map.Entry<String, List<CashierDevice>> entry : locationMap.entrySet()) {
+            Map<String, Object> locationData = new HashMap<>();
+            List<CashierDevice> devices = entry.getValue();
+
+            long onlineCount = devices.stream()
+                    .filter(d -> d.getLastHeartbeat() != null && d.getLastHeartbeat().isAfter(cutoffTime))
+                    .count();
+            long offlineCount = devices.size() - onlineCount;
+
+            Map<String, Object> onlineDevices = new HashMap<>();
+            List<Map<String, Object>> onlineList = new java.util.ArrayList<>();
+            List<Map<String, Object>> offlineList = new java.util.ArrayList<>();
+
+            for (CashierDevice device : devices) {
+                Map<String, Object> deviceInfo = new HashMap<>();
+                deviceInfo.put("id", device.getId());
+                deviceInfo.put("deviceNo", device.getDeviceNo());
+                deviceInfo.put("deviceName", device.getDeviceName());
+                deviceInfo.put("deviceType", device.getDeviceType());
+                deviceInfo.put("ipAddress", device.getIpAddress());
+                deviceInfo.put("osType", device.getOsType());
+                deviceInfo.put("appVersion", device.getAppVersion());
+                deviceInfo.put("lastHeartbeat", device.getLastHeartbeat() != null ? device.getLastHeartbeat().toString() : null);
+                boolean isOnline = device.getLastHeartbeat() != null && device.getLastHeartbeat().isAfter(cutoffTime);
+                deviceInfo.put("isOnline", isOnline);
+                deviceInfo.put("deviceStatus", isOnline ? 1 : 0);
+
+                if (isOnline) {
+                    onlineList.add(deviceInfo);
+                } else {
+                    offlineList.add(deviceInfo);
+                }
+            }
+
+            locationData.put("location", entry.getKey());
+            locationData.put("totalDevices", devices.size());
+            locationData.put("onlineDevices", onlineCount);
+            locationData.put("offlineDevices", offlineCount);
+            locationData.put("onlineRate", devices.size() > 0 ? String.format("%.2f", onlineCount * 100.0 / devices.size()) + "%" : "0%");
+            locationData.put("deviceList", devices);
+            locationData.put("onlineDeviceList", onlineList);
+            locationData.put("offlineDeviceList", offlineList);
+
+            result.add(locationData);
+        }
+
+        result.sort((a, b) -> Long.compare(
+                ((Number) b.get("onlineDevices")).longValue(),
+                ((Number) a.get("onlineDevices")).longValue()
+        ));
+
+        return result;
+    }
+
+    @Override
+    public Map<String, Object> getLocationMonitorOverview() {
+        Map<String, Object> result = new HashMap<>();
+
+        List<Map<String, Object>> locationList = getDeviceListByLocation();
+
+        long totalLocations = locationList.size();
+        long totalDevices = locationList.stream()
+                .mapToLong(l -> ((Number) l.get("totalDevices")).longValue())
+                .sum();
+        long totalOnline = locationList.stream()
+                .mapToLong(l -> ((Number) l.get("onlineDevices")).longValue())
+                .sum();
+        long totalOffline = locationList.stream()
+                .mapToLong(l -> ((Number) l.get("offlineDevices")).longValue())
+                .sum();
+
+        long fullyOnlineLocations = locationList.stream()
+                .filter(l -> ((Number) l.get("offlineDevices")).longValue() == 0)
+                .count();
+        long hasOfflineLocations = totalLocations - fullyOnlineLocations;
+
+        result.put("totalLocations", totalLocations);
+        result.put("totalDevices", totalDevices);
+        result.put("totalOnlineDevices", totalOnline);
+        result.put("totalOfflineDevices", totalOffline);
+        result.put("overallOnlineRate", totalDevices > 0 ? String.format("%.2f", totalOnline * 100.0 / totalDevices) + "%" : "0%");
+        result.put("fullyOnlineLocations", fullyOnlineLocations);
+        result.put("hasOfflineLocations", hasOfflineLocations);
+        result.put("locationList", locationList);
+
+        LocalDate today = LocalDate.now();
+        Map<String, Object> todayAbnormal = getLogAnalysisSummary(today, today, null);
+        result.put("todayAbnormalChecks", todayAbnormal.get("abnormalChecks"));
+        result.put("todayNetworkAbnormal", todayAbnormal.get("networkAbnormalCount"));
+        result.put("todayPrinterAbnormal", todayAbnormal.get("printerAbnormalCount"));
+
+        return result;
+    }
+
+    @Override
+    public IPage<DeviceSelfCheckLog> getAbnormalSelfCheckLogs(Integer page, Integer size, LocalDate startDate, LocalDate endDate, String deviceNo) {
+        if (page == null || page < 1) page = 1;
+        if (size == null || size < 1) size = 20;
+
+        if (startDate == null) {
+            startDate = LocalDate.now().minusDays(7);
+        }
+        if (endDate == null) {
+            endDate = LocalDate.now();
+        }
+
+        LambdaQueryWrapper<DeviceSelfCheckLog> wrapper = new LambdaQueryWrapper<>();
+        wrapper.ge(DeviceSelfCheckLog::getCreateTime, startDate.atStartOfDay())
+                .le(DeviceSelfCheckLog::getCreateTime, endDate.atTime(23, 59, 59))
+                .and(w -> w.eq(DeviceSelfCheckLog::getCheckStatus, 3)
+                        .or().eq(DeviceSelfCheckLog::getNetworkStatus, 0)
+                        .or().eq(DeviceSelfCheckLog::getPrinterStatus, 0)
+                        .or().eq(DeviceSelfCheckLog::getPrinterStatus, 3)
+                        .or().eq(DeviceSelfCheckLog::getStorageStatus, 2));
+        if (StringUtils.hasText(deviceNo)) {
+            wrapper.eq(DeviceSelfCheckLog::getDeviceNo, deviceNo);
+        }
+        wrapper.orderByDesc(DeviceSelfCheckLog::getCreateTime);
+
+        return selfCheckLogMapper.selectPage(new Page<>(page, size), wrapper);
+    }
 }

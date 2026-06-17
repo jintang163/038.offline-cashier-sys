@@ -18,7 +18,7 @@ import {
   UnlockOutlined,
   SafetyOutlined,
   WifiOutlined,
-  WifiOffOutlined,
+  CloseCircleOutlined,
 } from '@ant-design/icons'
 import fraudDetectionService from '../services/fraudDetectionService'
 import { useOnlineStatus } from '../hooks/useNetwork'
@@ -162,7 +162,7 @@ export default function OperationLockModal({
                 <Tag color={riskLevel.color}>{riskLevel.text}</Tag>
                 <Tag color={operationType.color}>{operationType.text}</Tag>
                 {lockData.is_offline ? (
-                  <Tag icon={<WifiOffOutlined />} color="default">
+                  <Tag icon={<CloseCircleOutlined />} color="default">
                     离线触发
                   </Tag>
                 ) : (
@@ -222,7 +222,7 @@ export default function OperationLockModal({
             <Alert
               type="warning"
               showIcon
-              icon={<WifiOffOutlined />}
+              icon={<CloseCircleOutlined />}
               message="当前处于离线状态"
               description="请先连接网络，然后进行联网验证解锁操作"
               style={{ marginBottom: 16 }}

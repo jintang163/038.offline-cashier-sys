@@ -881,6 +881,48 @@ class ApiService {
     )
   }
 
+  async getLogAnalysisSummary(params) {
+    return this.request(
+      {
+        url: '/device/log/analysis-summary',
+        method: 'get',
+        params,
+      },
+      { offlineQueue: false, offlineData: null }
+    )
+  }
+
+  async getDeviceListByLocation() {
+    return this.request(
+      {
+        url: '/device/device-list-by-location',
+        method: 'get',
+      },
+      { offlineQueue: false, offlineData: [] }
+    )
+  }
+
+  async getLocationMonitorOverview() {
+    return this.request(
+      {
+        url: '/device/monitor/location-overview',
+        method: 'get',
+      },
+      { offlineQueue: false, offlineData: null }
+    )
+  }
+
+  async getAbnormalSelfCheckLogs(params) {
+    return this.request(
+      {
+        url: '/device/self-check/abnormal-list',
+        method: 'get',
+        params,
+      },
+      { offlineQueue: false, offlineData: null }
+    )
+  }
+
   get baseURL() {
     return baseURL
   }

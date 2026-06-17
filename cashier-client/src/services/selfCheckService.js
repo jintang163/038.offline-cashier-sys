@@ -1,5 +1,6 @@
 import loggerService from './loggerService'
 import apiService from '../api/request'
+import db from '../db/dexie'
 
 class SelfCheckService {
   constructor() {
@@ -87,27 +88,103 @@ class SelfCheckService {
       printerName: null,
       online: false,
       error: null,
+      printers: [],
     }
 
     try {
       const settings = JSON.parse(localStorage.getItem('printerSettings') || '{}')
       result.printerName = settings.defaultPrinter || '默认打印机'
 
-      if (this.isElectron) {
-        try {
-          result.online = true
-          result.status = 1
-        } catch (e) {
-          result.status = 3
-          result.error = e.message
+      let printers = []
+      try {
+        printers = await db.getPrinters() || []
+      } catch (e) {
+        loggerService.warn('SelfCheckService', 'Failed to get printers from db', { error: e.message })
+      }
+
+      if (printers.length === 0) {
+        result.status = 3
+        result.error = '未配置任何打印机'
+        result.online = false
+        loggerService.warn('SelfCheckService', 'Printer check failed: no printers configured')
+        return result
+      }
+
+      let totalStatus = 1
+      let hasError = false
+      const printerDetails = []
+
+      for (const printer of printers) {
+        const printerStatus = {
+          id: printer.id,
+          printerCode: printer.printer_code,
+          printerName: printer.printer_name,
+          connectionType: printer.connection_type,
+          status: 1,
+          error: null,
         }
+
+        try {
+          if (this.isElectron && window.electronAPI?.checkPrinterStatus) {
+            const checkResult = await window.electronAPI.checkPrinterStatus(printer)
+            if (checkResult && checkResult.success && checkResult.data) {
+              printerStatus.status = checkResult.data.status
+              printerStatus.error = checkResult.data.error
+            }
+          } else {
+            printerStatus.status = printer.status === 1 ? 1 : 3
+            printerStatus.error = printer.status !== 1 ? '打印机已禁用' : null
+          }
+        } catch (e) {
+          printerStatus.status = 3
+          printerStatus.error = e.message
+        }
+
+        if (printerStatus.status === 0) {
+          totalStatus = Math.max(totalStatus, 0)
+          hasError = true
+        } else if (printerStatus.status === 3) {
+          totalStatus = Math.max(totalStatus, 3)
+          hasError = true
+        } else if (printerStatus.status === 2) {
+          if (totalStatus !== 0 && totalStatus !== 3) {
+            totalStatus = 2
+          }
+        }
+
+        printerDetails.push(printerStatus)
+      }
+
+      result.printers = printerDetails
+      result.status = totalStatus
+      result.online = !hasError
+
+      const activePrinters = printerDetails.filter(p => p.status === 1 || p.status === 2)
+      if (activePrinters.length > 0) {
+        result.printerName = activePrinters[0].printerName
+      }
+
+      if (hasError) {
+        const errorMsgs = printerDetails
+          .filter(p => p.status === 0 || p.status === 3)
+          .map(p => `${p.printerName || p.printerCode}: ${p.error || '状态异常'}`)
+        result.error = errorMsgs.join('; ')
+        loggerService.warn('SelfCheckService', 'Printer check found issues', {
+          total: printers.length,
+          online: activePrinters.length,
+          errors: errorMsgs,
+        })
       } else {
-        result.status = 1
-        result.online = true
+        loggerService.info('SelfCheckService', 'Printer check passed', {
+          total: printers.length,
+          online: activePrinters.length,
+        })
       }
     } catch (error) {
       result.status = 3
       result.error = error.message
+      result.online = false
+      loggerService.error('SelfCheckService', 'Printer check exception', { error: error.message })
     }
 
     return result

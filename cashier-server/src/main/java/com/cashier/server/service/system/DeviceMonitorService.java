@@ -42,4 +42,12 @@ public interface DeviceMonitorService extends IService<CashierDevice> {
     IPage<CashierDevice> getDevicePageList(Integer page, Integer size, String deviceType, Integer deviceStatus, String keyword);
 
     Map<String, Object> getDeviceMonitorOverview();
+
+    Map<String, Object> getLogAnalysisSummary(LocalDate startDate, LocalDate endDate, String deviceNo);
+
+    List<Map<String, Object>> getDeviceListByLocation();
+
+    Map<String, Object> getLocationMonitorOverview();
+
+    IPage<DeviceSelfCheckLog> getAbnormalSelfCheckLogs(Integer page, Integer size, LocalDate startDate, LocalDate endDate, String deviceNo);
 }

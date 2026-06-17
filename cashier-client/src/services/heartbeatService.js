@@ -100,6 +100,19 @@ class HeartbeatService {
   }
 
   async sendHeartbeat() {
+    const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true
+
+    if (!isOnline) {
+      loggerService.warn('HeartbeatService', 'Heartbeat skipped: network offline')
+      this.notifyListeners({
+        success: false,
+        lastHeartbeat: this.lastHeartbeatTime ? this.lastHeartbeatTime.toISOString() : null,
+        offline: true,
+        error: '网络离线，心跳未发送',
+      })
+      return false
+    }
+
     try {
       const deviceInfo = await this.getDeviceInfo()
       const ipAddress = await this.getIpAddress()
@@ -114,6 +127,7 @@ class HeartbeatService {
       this.notifyListeners({
         success: true,
         lastHeartbeat: this.lastHeartbeatTime.toISOString(),
+        offline: false,
         serverResponse: result?.data || null,
       })
 
@@ -123,6 +137,7 @@ class HeartbeatService {
       this.notifyListeners({
         success: false,
         lastHeartbeat: this.lastHeartbeatTime ? this.lastHeartbeatTime.toISOString() : null,
+        offline: false,
         error: error.message,
       })
       loggerService.warn('HeartbeatService', 'Heartbeat failed', { error: error.message })

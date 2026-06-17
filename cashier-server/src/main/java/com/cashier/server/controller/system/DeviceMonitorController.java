@@ -194,4 +194,36 @@ public class DeviceMonitorController {
         Map<String, Object> result = deviceMonitorService.getDeviceMonitorOverview();
         return Result.success(result);
     }
+
+    @GetMapping("/log/analysis-summary")
+    public Result<Map<String, Object>> getLogAnalysisSummary(
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd") LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd") LocalDate endDate,
+            @RequestParam(required = false) String deviceNo) {
+        Map<String, Object> result = deviceMonitorService.getLogAnalysisSummary(startDate, endDate, deviceNo);
+        return Result.success(result);
+    }
+
+    @GetMapping("/device-list-by-location")
+    public Result<List<Map<String, Object>>> getDeviceListByLocation() {
+        List<Map<String, Object>> result = deviceMonitorService.getDeviceListByLocation();
+        return Result.success(result);
+    }
+
+    @GetMapping("/monitor/location-overview")
+    public Result<Map<String, Object>> getLocationMonitorOverview() {
+        Map<String, Object> result = deviceMonitorService.getLocationMonitorOverview();
+        return Result.success(result);
+    }
+
+    @GetMapping("/self-check/abnormal-list")
+    public Result<IPage<DeviceSelfCheckLog>> getAbnormalSelfCheckLogs(
+            @RequestParam(defaultValue = "1") Integer page,
+            @RequestParam(defaultValue = "20") Integer size,
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd") LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd") LocalDate endDate,
+            @RequestParam(required = false) String deviceNo) {
+        IPage<DeviceSelfCheckLog> result = deviceMonitorService.getAbnormalSelfCheckLogs(page, size, startDate, endDate, deviceNo);
+        return Result.success(result);
+    }
 }
