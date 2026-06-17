@@ -953,6 +953,112 @@ class ApiService {
     )
   }
 
+  async generatePurchaseSuggestion(params) {
+    return this.request(
+      {
+        url: '/purchase/suggestion/generate',
+        method: 'post',
+        data: params,
+      },
+      { offlineQueue: false }
+    )
+  }
+
+  async getPurchaseSuggestionPage(params) {
+    return this.request(
+      {
+        url: '/purchase/suggestion/page',
+        method: 'get',
+        params,
+      },
+      { offlineQueue: false, offlineData: null }
+    )
+  }
+
+  async getPurchaseSuggestionDetail(id) {
+    return this.request(
+      {
+        url: `/purchase/suggestion/${id}`,
+        method: 'get',
+      },
+      { offlineQueue: false, offlineData: null }
+    )
+  }
+
+  async getPurchaseSuggestionItems(id) {
+    return this.request(
+      {
+        url: `/purchase/suggestion/${id}/items`,
+        method: 'get',
+      },
+      { offlineQueue: false, offlineData: null }
+    )
+  }
+
+  async confirmPurchaseSuggestion(confirmData) {
+    return this.request(
+      {
+        url: '/purchase/suggestion/confirm',
+        method: 'post',
+        data: confirmData,
+      },
+      { offlineQueue: false }
+    )
+  }
+
+  async rejectPurchaseSuggestion(id, rejectReason) {
+    return this.request(
+      {
+        url: `/purchase/suggestion/${id}/reject`,
+        method: 'post',
+        data: { rejectReason },
+      },
+      { offlineQueue: false }
+    )
+  }
+
+  async pushPurchaseSuggestionToErp(id) {
+    return this.request(
+      {
+        url: `/purchase/suggestion/${id}/push-erp`,
+        method: 'post',
+      },
+      { offlineQueue: false }
+    )
+  }
+
+  async generatePurchaseOrder(id) {
+    return this.request(
+      {
+        url: `/purchase/suggestion/${id}/generate-order`,
+        method: 'post',
+      },
+      { offlineQueue: false }
+    )
+  }
+
+  async triggerAutoPurchaseForecast(shopId, shopName) {
+    return this.request(
+      {
+        url: '/purchase/suggestion/auto-forecast',
+        method: 'post',
+        data: { shopId, shopName },
+      },
+      { offlineQueue: false }
+    )
+  }
+
+  async getHistoricalSalesForecast(params) {
+    return this.request(
+      {
+        url: '/purchase/suggestion/forecast/historical-sales',
+        method: 'get',
+        params,
+      },
+      { offlineQueue: false, offlineData: null }
+    )
+  }
+
   get baseURL() {
     return baseURL
   }

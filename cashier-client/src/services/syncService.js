@@ -5,6 +5,7 @@ import invoiceService from './invoiceService'
 import fraudDetectionService from './fraudDetectionService'
 import loggerService from './loggerService'
 import syncOptimizer from './syncOptimizerService'
+import { getCurrentUser } from '../utils/auth'
 
 class SyncService {
   constructor() {
@@ -883,6 +884,34 @@ class SyncService {
     if (this.autoSyncEnabled && navigator.onLine) {
       try {
         await this.fullSync()
+
+        try {
+          const user = getCurrentUser()
+          const shopId = user?.shopId || localStorage.getItem('shopId')
+          const shopName = user?.shopName || localStorage.getItem('shopName')
+
+          const lastAutoForecastTime = await db.getSetting('lastAutoForecastTime')
+          const now = Date.now()
+          const fourHours = 4 * 60 * 60 * 1000
+
+          if (!lastAutoForecastTime || (now - parseInt(lastAutoForecastTime) > fourHours)) {
+            loggerService.info('SyncService', 'Triggering auto purchase forecast after network restore', {
+              shopId,
+              shopName,
+            })
+            try {
+              await api.triggerAutoPurchaseForecast(shopId, shopName)
+              await db.setSetting('lastAutoForecastTime', now.toString())
+              loggerService.info('SyncService', 'Auto purchase forecast generated successfully')
+            } catch (forecastError) {
+              loggerService.warn('SyncService', 'Auto purchase forecast failed, no urgent replenishment needed', {
+                error: forecastError.message,
+              })
+            }
+          }
+        } catch (e) {
+          console.warn('Auto forecast trigger skipped:', e.message)
+        }
       } catch (error) {
         console.error('Auto sync failed:', error)
       }

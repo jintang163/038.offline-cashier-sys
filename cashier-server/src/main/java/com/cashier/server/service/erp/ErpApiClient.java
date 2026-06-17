@@ -590,6 +590,52 @@ public class ErpApiClient {
         }
     }
 
+    public Map<String, Object> pushPurchaseSuggestion(Map<String, Object> suggestionData) {
+        return pushPurchaseSuggestion(suggestionData, null);
+    }
+
+    public Map<String, Object> pushPurchaseSuggestion(Map<String, Object> suggestionData, Long configId) {
+        log.info("开始调用ERP接口推送采购建议单, suggestionNo={}", suggestionData.get("suggestionNo"));
+        if (hasDynamicMapping(configId, "PURCHASE_SUGGESTION_PUSH", "PUSH")) {
+            log.info("使用动态映射配置推送采购建议单");
+            return executeDynamicPush(configId, "PURCHASE_SUGGESTION_PUSH", suggestionData,
+                    String.valueOf(suggestionData.get("suggestionNo")), null);
+        }
+        ErpSyncLog syncLog = createSyncLog(configId, "PURCHASE_SUGGESTION_PUSH", "PUSH", "AUTO");
+        syncLogService.updateBusinessId(syncLog.getId(), String.valueOf(suggestionData.get("suggestionNo")));
+        try {
+            Map<String, Object> response = executeWithRetry("/purchase/suggestion/push", suggestionData, HttpMethod.POST, configId, syncLog);
+            updateLogSuccess(syncLog, JSON.toJSONString(response));
+            return response;
+        } catch (Exception e) {
+            updateLogFail(syncLog, null, null, e.getMessage());
+            throw e;
+        }
+    }
+
+    public Map<String, Object> createPurchaseOrder(Map<String, Object> orderData) {
+        return createPurchaseOrder(orderData, null);
+    }
+
+    public Map<String, Object> createPurchaseOrder(Map<String, Object> orderData, Long configId) {
+        log.info("开始调用ERP接口创建采购订单, suggestionNo={}", orderData.get("suggestionNo"));
+        if (hasDynamicMapping(configId, "PURCHASE_ORDER_CREATE", "PUSH")) {
+            log.info("使用动态映射配置创建采购订单");
+            return executeDynamicPush(configId, "PURCHASE_ORDER_CREATE", orderData,
+                    String.valueOf(orderData.get("suggestionNo")), null);
+        }
+        ErpSyncLog syncLog = createSyncLog(configId, "PURCHASE_ORDER_CREATE", "PUSH", "AUTO");
+        syncLogService.updateBusinessId(syncLog.getId(), String.valueOf(orderData.get("suggestionNo")));
+        try {
+            Map<String, Object> response = executeWithRetry("/purchase/order/create", orderData, HttpMethod.POST, configId, syncLog);
+            updateLogSuccess(syncLog, JSON.toJSONString(response));
+            return response;
+        } catch (Exception e) {
+            updateLogFail(syncLog, null, null, e.getMessage());
+            throw e;
+        }
+    }
+
     public Map<String, Object> executeWithRetry(String path, Map<String, Object> data, HttpMethod method) {
         return executeWithRetry(path, data, method, null, null);
     }

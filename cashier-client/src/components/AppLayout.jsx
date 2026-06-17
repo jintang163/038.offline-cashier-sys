@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { Menu, Badge, Button, Space } from 'antd'
 import {
   ShoppingCartOutlined,
+  ShoppingOutlined,
   OrderedListOutlined,
   BarChartOutlined,
   SettingOutlined,
@@ -140,6 +141,12 @@ function AppLayout({ children }) {
       icon: <MonitorOutlined />,
       label: '设备监控中心',
       onClick: () => navigate('/device-monitor'),
+    },
+    {
+      key: '/purchase-suggestion',
+      icon: <ShoppingOutlined />,
+      label: '供应链预测补货',
+      onClick: () => navigate('/purchase-suggestion'),
     },
     {
       key: 'logout',
