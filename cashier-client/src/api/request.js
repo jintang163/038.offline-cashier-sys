@@ -1,7 +1,7 @@
 import axios from 'axios'
 import db from '../utils/db'
 import { message } from 'antd'
-import { getToken, clearAuth } from '../utils/auth'
+import { getToken, clearAuth, getStoreId, getStoreCode } from '../utils/auth'
 import syncOptimizer from '../services/syncOptimizerService'
 
 const baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api'
@@ -16,6 +16,14 @@ request.interceptors.request.use(
     const token = getToken()
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
+    }
+    const storeId = getStoreId()
+    const storeCode = getStoreCode()
+    if (storeId) {
+      config.headers['X-Store-Id'] = storeId
+    }
+    if (storeCode) {
+      config.headers['X-Store-Code'] = storeCode
     }
     return config
   },
@@ -1046,6 +1054,150 @@ class ApiService {
       },
       { offlineQueue: false }
     )
+  }
+
+  async getStoreList(params) {
+    return this.request(
+      {
+        url: '/store/list',
+        method: 'get',
+        params,
+      },
+      { offlineQueue: false }
+    )
+  }
+
+  async getStoreDetail(id) {
+    return this.request(
+      {
+        url: `/store/${id}`,
+        method: 'get',
+      },
+      { offlineQueue: false }
+    )
+  }
+
+  async getStoreByCode(storeCode) {
+    return this.request(
+      {
+        url: `/store/code/${storeCode}`,
+        method: 'get',
+      },
+      { offlineQueue: false }
+    )
+  }
+
+  async getAllActiveStores() {
+    return this.request(
+      {
+        url: '/store/all',
+        method: 'get',
+      },
+      { offlineQueue: false }
+    )
+  }
+
+  async getStoreErpConfig(storeId) {
+    return this.request(
+      {
+        url: `/store/${storeId}/erp-config`,
+        method: 'get',
+      },
+      { offlineQueue: false }
+    )
+  }
+
+  async saveStoreErpConfig(configData) {
+    return this.request({
+      url: '/store/erp-config',
+      method: 'post',
+      data: configData,
+    })
+  }
+
+  async deleteStoreErpConfig(storeId) {
+    return this.request({
+      url: `/store/${storeId}/erp-config`,
+      method: 'delete',
+    })
+  }
+
+  async getStoreSyncOverview() {
+    return this.request(
+      {
+        url: '/store/monitor/sync-overview',
+        method: 'get',
+      },
+      { offlineQueue: false }
+    )
+  }
+
+  async getMyStoreSyncOverview() {
+    return this.request(
+      {
+        url: '/store/monitor/my-sync-overview',
+        method: 'get',
+      },
+      { offlineQueue: false }
+    )
+  }
+
+  async getStoreSyncOverviewById(storeId) {
+    return this.request(
+      {
+        url: `/store/monitor/${storeId}/sync-overview`,
+        method: 'get',
+      },
+      { offlineQueue: false }
+    )
+  }
+
+  async refreshStoreSyncStatus() {
+    return this.request({
+      url: '/store/monitor/refresh-status',
+      method: 'post',
+    })
+  }
+
+  async triggerStoreAggregation(storeId, dataType) {
+    return this.request({
+      url: '/store/monitor/aggregate',
+      method: 'post',
+      params: { storeId, dataType },
+    })
+  }
+
+  async triggerAllStoreAggregation(dataType) {
+    return this.request({
+      url: '/store/monitor/aggregate-all',
+      method: 'post',
+      params: { dataType },
+    })
+  }
+
+  async getAggregationList(params) {
+    return this.request(
+      {
+        url: '/store/monitor/aggregation/list',
+        method: 'get',
+        params,
+      },
+      { offlineQueue: false }
+    )
+  }
+
+  async pushAggregationToErp(id) {
+    return this.request({
+      url: `/store/monitor/aggregation/${id}/push-erp`,
+      method: 'post',
+    })
+  }
+
+  async batchPushAggregationToErp() {
+    return this.request({
+      url: '/store/monitor/aggregation/batch-push-erp',
+      method: 'post',
+    })
   }
 
   async getHistoricalSalesForecast(params) {

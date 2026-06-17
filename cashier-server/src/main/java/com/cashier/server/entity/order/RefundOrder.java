@@ -15,6 +15,10 @@ public class RefundOrder extends BaseEntity {
 
     private static final long serialVersionUID = 1L;
 
+    private Long storeId;
+
+    private String storeCode;
+
     private String refundNo;
 
     private String erpRefundId;

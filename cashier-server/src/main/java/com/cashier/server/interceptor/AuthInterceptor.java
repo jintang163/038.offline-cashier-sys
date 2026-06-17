@@ -44,6 +44,14 @@ public class AuthInterceptor implements HandlerInterceptor {
         if (userId != null) {
             SysUser user = sysUserService.getUserById(userId);
             if (user != null) {
+                String storeIdHeader = request.getHeader(Constants.STORE_ID_HEADER);
+                String storeCodeHeader = request.getHeader(Constants.STORE_CODE_HEADER);
+                if (storeIdHeader != null && user.getStoreId() == null) {
+                    user.setStoreId(Long.valueOf(storeIdHeader));
+                }
+                if (storeCodeHeader != null && user.getStoreCode() == null) {
+                    user.setStoreCode(storeCodeHeader);
+                }
                 UserContext.setCurrentUser(user);
                 tokenUtil.refreshToken(token);
             }

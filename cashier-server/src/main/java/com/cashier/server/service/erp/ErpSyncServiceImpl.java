@@ -12,11 +12,15 @@ import com.cashier.server.entity.order.RefundOrderItem;
 import com.cashier.server.entity.order.SalesSummary;
 import com.cashier.server.entity.product.Product;
 import com.cashier.server.entity.product.ProductCategory;
+import com.cashier.server.entity.store.Store;
+import com.cashier.server.entity.store.StoreErpConfig;
 import com.cashier.server.service.member.MemberCardService;
 import com.cashier.server.service.member.MemberService;
 import com.cashier.server.service.order.OrderService;
 import com.cashier.server.service.product.ProductCategoryService;
 import com.cashier.server.service.product.ProductService;
+import com.cashier.server.service.store.StoreErpConfigService;
+import com.cashier.server.service.store.StoreService;
 import com.cashier.server.service.stock.StockCheckTaskService;
 import com.cashier.server.websocket.WebSocketService;
 import org.slf4j.Logger;
@@ -58,6 +62,12 @@ public class ErpSyncServiceImpl implements ErpSyncService {
 
     @Autowired
     private MemberCardService memberCardService;
+
+    @Autowired
+    private StoreService storeService;
+
+    @Autowired
+    private StoreErpConfigService storeErpConfigService;
 
     @Autowired
     @Lazy
@@ -122,7 +132,7 @@ public class ErpSyncServiceImpl implements ErpSyncService {
                 if (success) {
                     orderService.updateSyncStatus(order.getId(), 1, null);
                     successCount++;
-                    log.info("订单同步成功: orderId={}, orderNo={}", order.getId(), order.getOrderNo());
+                    log.info("订单同步成功: orderId={}, orderNo={}, storeCode={}", order.getId(), order.getOrderNo(), order.getStoreCode());
                 } else {
                     orderService.updateSyncStatus(order.getId(), 2, "ERP接口返回失败");
                     failCount++;
@@ -198,12 +208,28 @@ public class ErpSyncServiceImpl implements ErpSyncService {
         if (order == null) {
             throw new BusinessException("订单不能为空");
         }
-        log.info("推送订单到ERP: orderId={}, orderNo={}", order.getId(), order.getOrderNo());
+        log.info("推送订单到ERP: orderId={}, orderNo={}, storeCode={}", order.getId(), order.getOrderNo(), order.getStoreCode());
         try {
-            Map<String, Object> response = erpApiClient.createOrder(order);
+            Map<String, Object> response;
+            if (order.getStoreId() != null) {
+                StoreErpConfig storeConfig = storeErpConfigService.resolveEffectiveConfig(order.getStoreId());
+                if (storeConfig != null && storeConfig.getPushOrderEnabled() != null && storeConfig.getPushOrderEnabled() == 1) {
+                    Map<String, Object> orderData = new java.util.HashMap<>();
+                    orderData.put("orderNo", order.getOrderNo());
+                    orderData.put("storeCode", order.getStoreCode());
+                    orderData.put("totalAmount", order.getTotalAmount());
+                    orderData.put("payAmount", order.getPayAmount());
+                    orderData.put("order", order);
+                    response = erpApiClient.callErpApi("POST", "/erp/order/create?storeCode=" + order.getStoreCode(), orderData);
+                } else {
+                    response = erpApiClient.createOrder(order);
+                }
+            } else {
+                response = erpApiClient.createOrder(order);
+            }
             Integer code = response.get("code") != null ? Integer.valueOf(response.get("code").toString()) : null;
             if (code != null && code == 200) {
-                log.info("推送订单到ERP成功: orderId={}, orderNo={}", order.getId(), order.getOrderNo());
+                log.info("推送订单到ERP成功: orderId={}, orderNo={}, storeCode={}", order.getId(), order.getOrderNo(), order.getStoreCode());
                 return true;
             } else {
                 String message = response.get("message") != null ? response.get("message").toString() : "未知错误";
@@ -232,6 +258,7 @@ public class ErpSyncServiceImpl implements ErpSyncService {
                 map.put("quantity", summary.getQuantity());
                 map.put("totalAmount", summary.getTotalAmount());
                 map.put("orderDate", summary.getOrderDate());
+                map.put("storeCode", summary.getStoreCode());
                 summaryList.add(map);
             }
             Map<String, Object> response = erpApiClient.pushSalesSummary(summaryList);

@@ -24,5 +24,11 @@ public class SysUser extends BaseEntity {
 
     private String avatar;
 
+    private Long storeId;
+
+    private String storeCode;
+
+    private Integer userType;
+
     private Integer status;
 }

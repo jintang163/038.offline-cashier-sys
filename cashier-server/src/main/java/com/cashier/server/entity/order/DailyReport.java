@@ -24,6 +24,8 @@ public class DailyReport extends BaseEntity {
 
     private String shopName;
 
+    private String storeCode;
+
     private Integer totalOrders;
 
     private BigDecimal totalAmount;

@@ -12,6 +12,10 @@ public class ProductStock extends BaseEntity {
 
     private static final long serialVersionUID = 1L;
 
+    private Long storeId;
+
+    private String storeCode;
+
     private Long productId;
 
     private String erpGoodsId;

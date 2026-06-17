@@ -5,7 +5,7 @@ import invoiceService from './invoiceService'
 import fraudDetectionService from './fraudDetectionService'
 import loggerService from './loggerService'
 import syncOptimizer from './syncOptimizerService'
-import { getCurrentUser } from '../utils/auth'
+import { getCurrentUser, getStoreId, getStoreCode, getStoreName } from '../utils/auth'
 
 class SyncService {
   constructor() {
@@ -227,6 +227,8 @@ class SyncService {
               pay_type: order.pay_type,
               pay_status: order.pay_status ?? 1,
               order_status: order.order_status ?? 2,
+              store_id: order.store_id || getStoreId() || null,
+              store_code: order.store_code || getStoreCode() || null,
               cashier_id: order.cashier_id,
               cashier_name: order.cashier_name,
               member_id: order.member_id,
@@ -887,8 +889,8 @@ class SyncService {
 
         try {
           const user = getCurrentUser()
-          const shopId = user?.shopId || localStorage.getItem('shopId')
-          const shopName = user?.shopName || localStorage.getItem('shopName')
+          const shopId = user?.shopId || getStoreId() || localStorage.getItem('shopId')
+          const shopName = user?.shopName || getStoreName() || localStorage.getItem('shopName')
 
           const lastAutoForecastTime = await db.getSetting('lastAutoForecastTime')
           const now = Date.now()

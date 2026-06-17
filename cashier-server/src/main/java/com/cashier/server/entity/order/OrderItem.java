@@ -14,6 +14,8 @@ public class OrderItem extends BaseEntity {
 
     private static final long serialVersionUID = 1L;
 
+    private Long storeId;
+
     private Long orderId;
 
     private String orderNo;

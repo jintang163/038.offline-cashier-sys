@@ -14,6 +14,8 @@ public class RefundOrderItem extends BaseEntity {
 
     private static final long serialVersionUID = 1L;
 
+    private Long storeId;
+
     private Long refundOrderId;
 
     private String refundNo;
