@@ -188,7 +188,7 @@ export default function RefundDialog({ visible, order, onClose, onSuccess }) {
       })
 
       setManagerModalVisible(false)
-      message.success('退菜申请已提交，库存已本地还原，待审核')
+      message.success('退菜申请已提交，待审核通过后自动还原库存')
       onSuccess && onSuccess()
       onClose && onClose()
     } catch (error) {
@@ -323,9 +323,9 @@ export default function RefundDialog({ visible, order, onClose, onSuccess }) {
                 <>
                   1. 退菜需经理权限验证
                   <br />
-                  2. 退菜提交后将本地还原库存，退款记录标记为"待审核"
+                  2. 退菜申请提交后标记为"待审核"，<b style={{color: '#1890ff'}}>审核通过后自动还原库存</b>
                   <br />
-                  3. 网络恢复后自动上传退款单到服务端，ERP生成红字销售单
+                  3. 网络恢复后自动上传退款单，审核通过后ERP自动生成红字销售单
                 </>
               }
               style={{ marginBottom: 16 }}

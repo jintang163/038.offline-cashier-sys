@@ -6,6 +6,7 @@ import com.cashier.server.dto.RefundOrderSyncDTO;
 import com.cashier.server.entity.order.RefundOrder;
 import com.cashier.server.entity.order.RefundOrderItem;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 
@@ -30,4 +31,8 @@ public interface RefundOrderService extends IService<RefundOrder> {
     boolean pushToErp(Long refundOrderId);
 
     List<RefundOrder> getPendingAuditList(Integer page, Integer size);
+
+    int getTotalRefundedQtyByOrderItemId(Long orderItemId, Long excludeRefundOrderId);
+
+    BigDecimal getTotalRefundedAmountByOrderId(Long orderId, Long excludeRefundOrderId);
 }

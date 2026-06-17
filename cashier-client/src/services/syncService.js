@@ -1015,6 +1015,13 @@ class SyncService {
             })
           }
 
+          const successMap = new Map()
+          if (result.successOrders) {
+            result.successOrders.forEach((s) => {
+              successMap.set(s.refundNo, s)
+            })
+          }
+
           for (const refund of batch) {
             if (failMap.has(refund.refund_no)) {
               results.failed++
@@ -1024,6 +1031,29 @@ class SyncService {
             } else {
               await db.updateRefundSyncStatus(refund.id, 1)
               results.success++
+
+              const successInfo = successMap.get(refund.refund_no)
+              if (successInfo && successInfo.auditStatus !== undefined && successInfo.auditStatus !== null) {
+                await db.applyAuditStatusFromSync(
+                  refund.id,
+                  successInfo.auditStatus,
+                  {
+                    auditorId: successInfo.auditorId,
+                    auditorName: successInfo.auditorName,
+                    auditTime: successInfo.auditTime,
+                    auditRemark: successInfo.auditRemark,
+                  }
+                )
+
+                if (successInfo.auditStatus === 1 && successInfo.erpPushStatus !== undefined && successInfo.erpPushStatus !== null) {
+                  await db.updateRefundErpPushStatus(
+                    refund.id,
+                    successInfo.erpPushStatus,
+                    successInfo.erpPushError,
+                    successInfo.erpRefundId
+                  )
+                }
+              }
             }
           }
         } catch (error) {

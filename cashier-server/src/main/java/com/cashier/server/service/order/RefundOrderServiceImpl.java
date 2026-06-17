@@ -29,8 +29,13 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 @Service
 public class RefundOrderServiceImpl extends ServiceImpl<RefundOrderMapper, RefundOrder> implements RefundOrderService {
+
+    private static final Logger log = LoggerFactory.getLogger(RefundOrderServiceImpl.class);
 
     @Autowired
     private RefundOrderItemService refundOrderItemService;
@@ -106,6 +111,14 @@ public class RefundOrderServiceImpl extends ServiceImpl<RefundOrderMapper, Refun
             throw new BusinessException("只有已支付的订单才能退款");
         }
 
+        BigDecimal alreadyRefundedAmount = getTotalRefundedAmountByOrderId(orderId, null);
+        BigDecimal availableRefundAmount = order.getPayAmount() != null
+                ? order.getPayAmount().subtract(alreadyRefundedAmount)
+                : BigDecimal.ZERO;
+        if (availableRefundAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BusinessException("该订单已无可退款金额");
+        }
+
         List<OrderItem> originalItems = orderItemService.getOrderItems(orderId);
         Map<Long, OrderItem> originalItemMap = new HashMap<>();
         for (OrderItem item : originalItems) {
@@ -117,6 +130,12 @@ public class RefundOrderServiceImpl extends ServiceImpl<RefundOrderMapper, Refun
 
         if (refundType == 2) {
             for (OrderItem oi : originalItems) {
+                int alreadyRefundedQty = getTotalRefundedQtyByOrderItemId(oi.getId(), null);
+                int availableQty = oi.getQuantity() - alreadyRefundedQty;
+                if (availableQty <= 0) {
+                    continue;
+                }
+
                 RefundOrderItem ri = new RefundOrderItem();
                 ri.setOrderItemId(oi.getId());
                 ri.setProductId(oi.getProductId());
@@ -124,9 +143,16 @@ public class RefundOrderServiceImpl extends ServiceImpl<RefundOrderMapper, Refun
                 ri.setProductName(oi.getProductName());
                 ri.setPrice(oi.getPrice());
                 ri.setOriginalQuantity(oi.getQuantity());
-                ri.setRefundQuantity(oi.getQuantity());
+                ri.setRefundQuantity(availableQty);
                 ri.setOriginalAmount(oi.getTotalAmount());
-                BigDecimal itemRefund = oi.getPayAmount() != null ? oi.getPayAmount() : oi.getTotalAmount();
+                BigDecimal totalPaidOfItem = oi.getPayAmount() != null ? oi.getPayAmount() : oi.getTotalAmount();
+                BigDecimal unitPrice = oi.getQuantity() > 0
+                        ? totalPaidOfItem.divide(new BigDecimal(oi.getQuantity()), 4, BigDecimal.ROUND_HALF_UP)
+                        : oi.getPrice();
+                BigDecimal itemRefund = unitPrice.multiply(new BigDecimal(availableQty));
+                if (itemRefund.compareTo(availableRefundAmount.subtract(totalRefundAmount)) > 0) {
+                    itemRefund = availableRefundAmount.subtract(totalRefundAmount);
+                }
                 ri.setRefundAmount(itemRefund);
                 ri.setDiscountAmount(oi.getDiscountAmount());
                 totalRefundAmount = totalRefundAmount.add(itemRefund);
@@ -149,8 +175,13 @@ public class RefundOrderServiceImpl extends ServiceImpl<RefundOrderMapper, Refun
                 if (oi == null) {
                     throw new BusinessException("订单明细不存在: " + orderItemId);
                 }
-                if (refundQuantity > oi.getQuantity()) {
-                    throw new BusinessException("退款数量不能超过原购买数量: " + oi.getProductName());
+                int alreadyRefundedQty = getTotalRefundedQtyByOrderItemId(oi.getId(), null);
+                int availableQty = oi.getQuantity() - alreadyRefundedQty;
+                if (availableQty <= 0) {
+                    continue;
+                }
+                if (refundQuantity > availableQty) {
+                    refundQuantity = availableQty;
                 }
 
                 BigDecimal unitPrice = oi.getPayAmount() != null && oi.getQuantity() > 0
@@ -163,8 +194,8 @@ public class RefundOrderServiceImpl extends ServiceImpl<RefundOrderMapper, Refun
                 ri.setProductId(oi.getProductId());
                 ri.setErpGoodsId(oi.getErpGoodsId());
                 ri.setProductName(oi.getProductName());
-                ri.setBarcode(item.get("barcode") != null ? item.get("barcode").toString() : null);
-                ri.setImage(item.get("image") != null ? item.get("image").toString() : null);
+                ri.setBarcode(item.get("barcode") != null ? item.get("barcode").toString() : oi.getBarcode());
+                ri.setImage(item.get("image") != null ? item.get("image").toString() : oi.getImage());
                 ri.setPrice(oi.getPrice());
                 ri.setOriginalQuantity(oi.getQuantity());
                 ri.setRefundQuantity(refundQuantity);
@@ -179,11 +210,14 @@ public class RefundOrderServiceImpl extends ServiceImpl<RefundOrderMapper, Refun
         }
 
         if (refundItems.isEmpty()) {
-            throw new BusinessException("退款明细不能为空");
+            throw new BusinessException("退款明细不能为空（无可退数量的商品已被自动过滤）");
         }
 
-        if (totalRefundAmount.compareTo(order.getPayAmount()) > 0) {
-            throw new BusinessException("退款金额不能超过原订单实收金额");
+        if (totalRefundAmount.compareTo(availableRefundAmount) > 0) {
+            totalRefundAmount = availableRefundAmount;
+        }
+        if (totalRefundAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BusinessException("退款金额必须大于0");
         }
 
         String refundNo = generateRefundNo();
@@ -241,10 +275,23 @@ public class RefundOrderServiceImpl extends ServiceImpl<RefundOrderMapper, Refun
         if (auditStatus == 1 && result) {
             List<RefundOrderItem> items = getRefundOrderItems(refundOrderId);
             for (RefundOrderItem item : items) {
-                ProductStock stock = productStockService.getStockByProductId(item.getProductId());
-                if (stock != null) {
-                    productStockService.addStock(item.getProductId(), item.getRefundQuantity());
+                if (item.getProductId() != null && item.getRefundQuantity() != null && item.getRefundQuantity() > 0) {
+                    ProductStock stock = productStockService.getStockByProductId(item.getProductId());
+                    if (stock != null) {
+                        productStockService.addStock(item.getProductId(), item.getRefundQuantity());
+                    }
                 }
+            }
+
+            if (refundOrder.getSyncStatus() == 1 && (refundOrder.getErpPushStatus() == null || refundOrder.getErpPushStatus() != 1)) {
+                final Long finalRefundId = refundOrderId;
+                new Thread(() -> {
+                    try {
+                        pushToErp(finalRefundId);
+                    } catch (Exception e) {
+                        log.warn("审核后自动推送ERP红字单失败，退款单ID: {}, 错误: {}", finalRefundId, e.getMessage());
+                    }
+                }).start();
             }
         }
 
@@ -282,6 +329,7 @@ public class RefundOrderServiceImpl extends ServiceImpl<RefundOrderMapper, Refun
         Map<String, Object> result = new HashMap<>();
         List<Map<String, Object>> successList = new ArrayList<>();
         List<Map<String, Object>> failList = new ArrayList<>();
+        List<Long> auditPassedNeedPushIds = new ArrayList<>();
 
         for (RefundOrderSyncDTO dto : refundOrderList) {
             try {
@@ -314,7 +362,8 @@ public class RefundOrderServiceImpl extends ServiceImpl<RefundOrderMapper, Refun
                     }
                 }
 
-                if (refundOrder.getAuditStatus() == 1 && refundOrder.getSyncStatus() != 1) {
+                if (refundOrder.getAuditStatus() != null && refundOrder.getAuditStatus() == 1
+                        && refundOrder.getSyncStatus() != 1) {
                     updateSyncStatus(refundOrder.getId(), 1, null);
                 }
 
@@ -323,11 +372,19 @@ public class RefundOrderServiceImpl extends ServiceImpl<RefundOrderMapper, Refun
                         .eq(RefundOrder::getId, refundOrder.getId())
                         .update();
 
+                if (refundOrder.getAuditStatus() != null && refundOrder.getAuditStatus() == 1
+                        && (refundOrder.getErpPushStatus() == null || refundOrder.getErpPushStatus() != 1)) {
+                    auditPassedNeedPushIds.add(refundOrder.getId());
+                }
+
                 Map<String, Object> success = new HashMap<>();
                 success.put("refundNo", dto.getRefundNo());
                 success.put("id", refundOrder.getId());
+                success.put("auditStatus", refundOrder.getAuditStatus());
+                success.put("erpPushStatus", refundOrder.getErpPushStatus());
                 successList.add(success);
             } catch (Exception e) {
+                log.error("同步退款单失败: {}, 错误: {}", dto.getRefundNo(), e.getMessage(), e);
                 Map<String, Object> fail = new HashMap<>();
                 fail.put("refundNo", dto.getRefundNo());
                 fail.put("error", e.getMessage());
@@ -346,6 +403,20 @@ public class RefundOrderServiceImpl extends ServiceImpl<RefundOrderMapper, Refun
         result.put("failCount", failList.size());
         result.put("successOrders", successList);
         result.put("failOrders", failList);
+
+        if (!auditPassedNeedPushIds.isEmpty()) {
+            final List<Long> idsToPush = auditPassedNeedPushIds;
+            new Thread(() -> {
+                for (Long refundId : idsToPush) {
+                    try {
+                        pushToErp(refundId);
+                    } catch (Exception e) {
+                        log.warn("同步后自动触发ERP红字单失败，退款单ID: {}, 错误: {}", refundId, e.getMessage());
+                    }
+                }
+            }).start();
+        }
+
         return result;
     }
 
@@ -393,6 +464,54 @@ public class RefundOrderServiceImpl extends ServiceImpl<RefundOrderMapper, Refun
         wrapper.orderByAsc(RefundOrder::getCreateTime);
         wrapper.last("LIMIT " + ((page - 1) * size) + ", " + size);
         return list(wrapper);
+    }
+
+    @Override
+    public int getTotalRefundedQtyByOrderItemId(Long orderItemId, Long excludeRefundOrderId) {
+        if (orderItemId == null) {
+            return 0;
+        }
+        LambdaQueryWrapper<RefundOrder> orderWrapper = new LambdaQueryWrapper<>();
+        orderWrapper.ne(RefundOrder::getAuditStatus, 2);
+        if (excludeRefundOrderId != null) {
+            orderWrapper.ne(RefundOrder::getId, excludeRefundOrderId);
+        }
+        List<Long> validRefundIds = list(orderWrapper).stream().map(RefundOrder::getId).toList();
+        if (validRefundIds.isEmpty()) {
+            return 0;
+        }
+        LambdaQueryWrapper<RefundOrderItem> itemWrapper = new LambdaQueryWrapper<>();
+        itemWrapper.eq(RefundOrderItem::getOrderItemId, orderItemId);
+        itemWrapper.in(RefundOrderItem::getRefundOrderId, validRefundIds);
+        List<RefundOrderItem> items = refundOrderItemService.list(itemWrapper);
+        int total = 0;
+        for (RefundOrderItem it : items) {
+            if (it.getRefundQuantity() != null) {
+                total += it.getRefundQuantity();
+            }
+        }
+        return total;
+    }
+
+    @Override
+    public BigDecimal getTotalRefundedAmountByOrderId(Long orderId, Long excludeRefundOrderId) {
+        if (orderId == null) {
+            return BigDecimal.ZERO;
+        }
+        LambdaQueryWrapper<RefundOrder> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(RefundOrder::getOrderId, orderId);
+        wrapper.ne(RefundOrder::getAuditStatus, 2);
+        if (excludeRefundOrderId != null) {
+            wrapper.ne(RefundOrder::getId, excludeRefundOrderId);
+        }
+        List<RefundOrder> refunds = list(wrapper);
+        BigDecimal total = BigDecimal.ZERO;
+        for (RefundOrder r : refunds) {
+            if (r.getRefundAmount() != null) {
+                total = total.add(r.getRefundAmount());
+            }
+        }
+        return total;
     }
 
     private String generateRefundNo() {

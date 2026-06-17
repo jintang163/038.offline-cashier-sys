@@ -97,25 +97,47 @@ class RefundService {
     const totalRefunded = await db.getTotalRefundedAmountByOrderId(orderId)
     const availableAmount = parseFloat(order.pay_amount) - totalRefunded
 
+    if (availableAmount <= 0) {
+      throw new Error('该订单已无可退款金额')
+    }
+
     let finalItems = []
     let refundAmount = 0
 
     if (refundType === 2) {
-      finalItems = (order.items || []).map((item) => ({
-        orderItemId: item.id,
-        product_id: item.product_id,
-        erp_goods_id: item.erp_goods_id,
-        product_name: item.product_name,
-        barcode: item.barcode,
-        image: item.image,
-        price: item.price,
-        originalQuantity: item.quantity,
-        refundQuantity: item.quantity,
-        originalAmount: item.total_amount,
-        refundAmount: item.pay_amount || item.subtotal,
-        discountAmount: item.discount_amount || 0,
-      }))
-      refundAmount = availableAmount
+      for (const item of order.items || []) {
+        const alreadyRefundedQty = await db.getRefundedQuantityByOrderItemId(item.id)
+        const availableQty = item.quantity - alreadyRefundedQty
+        if (availableQty <= 0) continue
+
+        const unitPrice = item.pay_amount && item.quantity > 0
+          ? item.pay_amount / item.quantity
+          : item.price
+        const qtyRefundAmount = unitPrice * availableQty
+        const remainingAvailable = availableAmount - refundAmount
+        let actualRefundAmount = qtyRefundAmount
+        if (actualRefundAmount > remainingAvailable) {
+          actualRefundAmount = remainingAvailable
+        }
+
+        finalItems.push({
+          orderItemId: item.id,
+          product_id: item.product_id,
+          erp_goods_id: item.erp_goods_id,
+          product_name: item.product_name,
+          barcode: item.barcode,
+          image: item.image,
+          price: item.price,
+          originalQuantity: item.quantity,
+          refundQuantity: availableQty,
+          originalAmount: item.total_amount,
+          refundAmount: actualRefundAmount,
+          discountAmount: item.discount_amount || 0,
+        })
+        refundAmount += actualRefundAmount
+        if (refundAmount >= availableAmount) break
+      }
+      refundAmount = Math.min(refundAmount, availableAmount)
     } else {
       for (const item of items) {
         const orderItem = (order.items || []).find((oi) => oi.id === item.orderItemId)

@@ -1962,12 +1962,6 @@ class DexieCache {
       })
     }
 
-    for (const item of items) {
-      if (item.product_id && item.refund_quantity) {
-        await this._increaseProductStock(item.product_id, item.refund_quantity)
-      }
-    }
-
     return { id: refundId, refund_no: refundNo }
   }
 
@@ -2078,6 +2072,9 @@ class DexieCache {
 
   async auditRefundLocal(refundId, auditStatus, auditorId, auditorName, auditRemark = null) {
     const now = new Date().toISOString()
+    const existing = await db.refund_orders.get(refundId)
+    const wasAuditPending = existing && existing.audit_status === 0
+
     const updateData = {
       audit_status: auditStatus,
       auditor_id: auditorId,
@@ -2086,7 +2083,59 @@ class DexieCache {
       audit_remark: auditRemark,
       updated_at: now,
     }
-    return await db.refund_orders.update(refundId, updateData)
+    const result = await db.refund_orders.update(refundId, updateData)
+
+    if (wasAuditPending && auditStatus === 1) {
+      try {
+        const items = await db.refund_order_items.where('refund_order_id').equals(refundId).toArray()
+        for (const item of items) {
+          if (item.product_id && item.refund_quantity) {
+            await this._increaseProductStock(item.product_id, item.refund_quantity)
+          }
+        }
+      } catch (e) {
+        console.warn('审核通过后本地库存还原失败，退款单ID:', refundId, e)
+      }
+    }
+
+    return result
+  }
+
+  async applyAuditStatusFromSync(refundId, serverAuditStatus, serverAuditor = {}) {
+    const existing = await db.refund_orders.get(refundId)
+    if (!existing) return false
+    if (existing.audit_status === serverAuditStatus) return false
+
+    const wasNotAudited = existing.audit_status !== 1
+    const now = new Date().toISOString()
+
+    const updateData = {
+      audit_status: serverAuditStatus,
+      updated_at: now,
+    }
+    if (serverAuditStatus === 1 || serverAuditStatus === 2) {
+      if (serverAuditor.auditorId !== undefined) updateData.auditor_id = serverAuditor.auditorId
+      if (serverAuditor.auditorName !== undefined) updateData.auditor_name = serverAuditor.auditorName
+      if (serverAuditor.auditTime !== undefined) updateData.audit_time = serverAuditor.auditTime
+      if (serverAuditor.auditRemark !== undefined) updateData.audit_remark = serverAuditor.auditRemark
+    }
+
+    const result = await db.refund_orders.update(refundId, updateData)
+
+    if (wasNotAudited && serverAuditStatus === 1) {
+      try {
+        const items = await db.refund_order_items.where('refund_order_id').equals(refundId).toArray()
+        for (const item of items) {
+          if (item.product_id && item.refund_quantity) {
+            await this._increaseProductStock(item.product_id, item.refund_quantity)
+          }
+        }
+      } catch (e) {
+        console.warn('同步审核通过后本地库存还原失败，退款单ID:', refundId, e)
+      }
+    }
+
+    return result
   }
 
   async getPendingAuditRefunds(limit = 50) {
