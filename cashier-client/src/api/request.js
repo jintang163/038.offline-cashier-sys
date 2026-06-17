@@ -2,6 +2,7 @@ import axios from 'axios'
 import db from '../utils/db'
 import { message } from 'antd'
 import { getToken, clearAuth } from '../utils/auth'
+import syncOptimizer from '../services/syncOptimizerService'
 
 const baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api'
 
@@ -59,13 +60,42 @@ request.interceptors.response.use(
 
 class ApiService {
   async request(config, options = {}) {
-    const { offlineQueue = true, offlineData = null } = options
+    const { offlineQueue = true, offlineData = null, enableCompression = true } = options
 
     try {
       if (!navigator.onLine) {
         throw new Error('OFFLINE')
       }
-      const response = await request(config)
+
+      let finalConfig = config
+
+      if (
+        enableCompression &&
+        config.method?.toUpperCase() !== 'GET' &&
+        config.data &&
+        (Array.isArray(config.data) || typeof config.data === 'object')
+      ) {
+        const compressResult = await syncOptimizer.compressIfNeeded(config.data)
+        if (compressResult.compressed) {
+          finalConfig = {
+            ...config,
+            data: {
+              _gzip: true,
+              _payload: compressResult.payload,
+              _originalSize: compressResult.originalSize,
+              _compressedSize: compressResult.compressedSize,
+            },
+            headers: {
+              ...config.headers,
+              'X-Data-Compression': 'gzip',
+              'X-Original-Size': compressResult.originalSize,
+              'X-Compressed-Size': compressResult.compressedSize,
+            },
+          }
+        }
+      }
+
+      const response = await request(finalConfig)
       return response
     } catch (error) {
       if (error.message === 'OFFLINE' || error.code === 'ERR_NETWORK') {

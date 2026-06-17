@@ -13,6 +13,9 @@ import com.cashier.server.entity.order.OrderPayment;
 import com.cashier.server.entity.order.SalesSummary;
 import com.cashier.server.mapper.order.OrderMapper;
 import com.cashier.server.service.product.ProductStockService;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,6 +32,9 @@ import java.util.UUID;
 
 @Service
 public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements OrderService {
+
+    private static final Logger log = LoggerFactory.getLogger(OrderServiceImpl.class);
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Autowired
     private OrderItemService orderItemService;
@@ -268,6 +274,7 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
     public Map<String, Object> batchSyncOrders(List<OrderSyncDTO> orderList) {
         int total = orderList.size();
         int successCount = 0;
+        int partialUpdateCount = 0;
         int failCount = 0;
         List<Map<String, Object>> failOrders = new ArrayList<>();
 
@@ -275,16 +282,23 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
             try {
                 String orderNo = orderDTO.getOrderNo();
                 Order existOrder = lambdaQuery().eq(Order::getOrderNo, orderNo).one();
+                boolean isPartial = Boolean.TRUE.equals(orderDTO.getIsPartial());
 
                 if (existOrder == null) {
                     Order order = createOrderFromDTO(orderDTO);
                     save(order);
 
-                    List<OrderItem> orderItems = convertOrderItems(orderDTO.getItems(), order.getId(), orderNo);
-                    orderItemService.saveBatch(orderItems);
+                    if (!isPartial || (orderDTO.getItems() != null && !orderDTO.getItems().isEmpty())) {
+                        List<OrderItem> orderItems = convertOrderItems(orderDTO.getItems(), order.getId(), orderNo);
+                        if (orderItems != null && !orderItems.isEmpty()) {
+                            orderItemService.saveBatch(orderItems);
+                        }
 
-                    List<SalesSummary> salesSummaries = convertSalesSummaries(orderDTO.getItems(), orderDTO.getCreatedAt() != null ? orderDTO.getCreatedAt().toLocalDate() : LocalDate.now());
-                    salesSummaryService.saveBatch(salesSummaries);
+                        List<SalesSummary> salesSummaries = convertSalesSummaries(orderDTO.getItems(), orderDTO.getCreatedAt() != null ? orderDTO.getCreatedAt().toLocalDate() : LocalDate.now());
+                        if (salesSummaries != null && !salesSummaries.isEmpty()) {
+                            salesSummaryService.saveBatch(salesSummaries);
+                        }
+                    }
 
                     if (orderDTO.getPayments() != null && !orderDTO.getPayments().isEmpty()) {
                         for (OrderPaymentSyncDTO paymentDTO : orderDTO.getPayments()) {
@@ -297,15 +311,35 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
                     if (orderDTO.getPayStatus() != null && orderDTO.getPayStatus() == 1 && (orderDTO.getPayments() == null || orderDTO.getPayments().isEmpty())) {
                         pay(order.getId(), orderDTO.getPayType(), orderDTO.getPayAmount(), null);
                     }
-                } else if (existOrder.getPayStatus() != null && existOrder.getPayStatus() != 1) {
-                    if (orderDTO.getPayments() != null && !orderDTO.getPayments().isEmpty()) {
-                        for (OrderPaymentSyncDTO paymentDTO : orderDTO.getPayments()) {
-                            if (paymentDTO.getPayStatus() != null && paymentDTO.getPayStatus() == 1) {
-                                pay(existOrder.getId(), paymentDTO.getPayType(), paymentDTO.getPayAmount(), paymentDTO.getTransactionId());
+                } else {
+                    if (isPartial) {
+                        applyPartialOrderUpdate(existOrder, orderDTO);
+                        partialUpdateCount++;
+                        log.debug("Partial order update applied: orderNo={}", orderNo);
+                    }
+
+                    if (orderDTO.getItems() != null && !orderDTO.getItems().isEmpty() && !isPartial) {
+                        List<OrderItem> existingItems = orderItemService.lambdaQuery()
+                                .eq(OrderItem::getOrderId, existOrder.getId())
+                                .list();
+                        if (existingItems == null || existingItems.isEmpty()) {
+                            List<OrderItem> orderItems = convertOrderItems(orderDTO.getItems(), existOrder.getId(), orderNo);
+                            if (orderItems != null && !orderItems.isEmpty()) {
+                                orderItemService.saveBatch(orderItems);
                             }
                         }
-                    } else if (orderDTO.getPayStatus() != null && orderDTO.getPayStatus() == 1) {
-                        pay(existOrder.getId(), orderDTO.getPayType(), orderDTO.getPayAmount(), null);
+                    }
+
+                    if (existOrder.getPayStatus() == null || existOrder.getPayStatus() != 1) {
+                        if (orderDTO.getPayments() != null && !orderDTO.getPayments().isEmpty()) {
+                            for (OrderPaymentSyncDTO paymentDTO : orderDTO.getPayments()) {
+                                if (paymentDTO.getPayStatus() != null && paymentDTO.getPayStatus() == 1) {
+                                    pay(existOrder.getId(), paymentDTO.getPayType(), paymentDTO.getPayAmount(), paymentDTO.getTransactionId());
+                                }
+                            }
+                        } else if (orderDTO.getPayStatus() != null && orderDTO.getPayStatus() == 1) {
+                            pay(existOrder.getId(), orderDTO.getPayType(), orderDTO.getPayAmount(), null);
+                        }
                     }
                 }
 
@@ -316,16 +350,77 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
                 failInfo.put("order_no", orderDTO.getOrderNo());
                 failInfo.put("error", e.getMessage());
                 failOrders.add(failInfo);
-                log.error("批量同步订单失败, order_no={}, error={}", orderDTO.getOrderNo(), e.getMessage());
+                log.error("批量同步订单失败, order_no={}, isPartial={}, error={}",
+                        orderDTO.getOrderNo(), orderDTO.getIsPartial(), e.getMessage());
             }
         }
 
         Map<String, Object> result = new HashMap<>();
         result.put("total", total);
         result.put("successCount", successCount);
+        result.put("partialUpdateCount", partialUpdateCount);
         result.put("failCount", failCount);
         result.put("failOrders", failOrders);
         return result;
+    }
+
+    private void applyPartialOrderUpdate(Order existing, OrderSyncDTO dto) {
+        Order update = new Order();
+        update.setId(existing.getId());
+        boolean needUpdate = false;
+
+        if (dto.getOrderStatus() != null && !dto.getOrderStatus().equals(existing.getOrderStatus())) {
+            update.setOrderStatus(dto.getOrderStatus());
+            needUpdate = true;
+        }
+        if (dto.getPayStatus() != null && !dto.getPayStatus().equals(existing.getPayStatus())) {
+            update.setPayStatus(dto.getPayStatus());
+            needUpdate = true;
+        }
+        if (dto.getPayType() != null && !dto.getPayType().equals(existing.getPayType())) {
+            update.setPayType(dto.getPayType());
+            needUpdate = true;
+        }
+        if (dto.getPayAmount() != null && dto.getPayAmount().compareTo(existing.getPayAmount() != null ? existing.getPayAmount() : BigDecimal.ZERO) != 0) {
+            update.setPayAmount(dto.getPayAmount());
+            needUpdate = true;
+        }
+        if (dto.getTotalAmount() != null && dto.getTotalAmount().compareTo(existing.getTotalAmount() != null ? existing.getTotalAmount() : BigDecimal.ZERO) != 0) {
+            update.setTotalAmount(dto.getTotalAmount());
+            needUpdate = true;
+        }
+        if (dto.getDiscountAmount() != null && dto.getDiscountAmount().compareTo(existing.getDiscountAmount() != null ? existing.getDiscountAmount() : BigDecimal.ZERO) != 0) {
+            update.setDiscountAmount(dto.getDiscountAmount());
+            needUpdate = true;
+        }
+        if (dto.getMemberId() != null && !dto.getMemberId().equals(existing.getMemberId())) {
+            update.setMemberId(dto.getMemberId());
+            needUpdate = true;
+        }
+        if (dto.getMemberName() != null && !dto.getMemberName().equals(existing.getMemberName())) {
+            update.setMemberName(dto.getMemberName());
+            needUpdate = true;
+        }
+        if (dto.getRemark() != null && !dto.getRemark().equals(existing.getRemark())) {
+            update.setRemark(dto.getRemark());
+            needUpdate = true;
+        }
+        if (dto.getSyncStatus() != null) {
+            update.setSyncStatus(dto.getSyncStatus());
+            needUpdate = true;
+        }
+        if (dto.getSyncError() != null) {
+            update.setSyncErrorMessage(dto.getSyncError());
+            needUpdate = true;
+        }
+        if (dto.getErpOrderId() != null && !dto.getErpOrderId().equals(existing.getErpOrderId())) {
+            update.setErpOrderId(dto.getErpOrderId());
+            needUpdate = true;
+        }
+
+        if (needUpdate) {
+            updateById(update);
+        }
     }
 
     private Order createOrderFromDTO(OrderSyncDTO dto) {

@@ -66,4 +66,7 @@ public class OrderSyncDTO {
 
     @JsonProperty("sync_error")
     private String syncError;
+
+    @JsonProperty("_isPartial")
+    private Boolean isPartial;
 }

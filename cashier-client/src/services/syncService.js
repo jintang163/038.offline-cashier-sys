@@ -4,6 +4,7 @@ import dailyReportService from './dailyReportService'
 import invoiceService from './invoiceService'
 import fraudDetectionService from './fraudDetectionService'
 import loggerService from './loggerService'
+import syncOptimizer from './syncOptimizerService'
 
 class SyncService {
   constructor() {
@@ -152,6 +153,8 @@ class SyncService {
     this.emit('syncStart', { type: 'orders' })
     this.emit('statusChange', { type: 'orders', status: 'syncing' })
 
+    let session = null
+
     try {
       let ordersToSync = []
 
@@ -163,70 +166,103 @@ class SyncService {
           }
         }
       } else {
+        const resumeable = await syncOptimizer.getResumeableSessions()
+        const orderSession = resumeable.find((s) => s.type === 'orders')
+
+        if (orderSession && !orderIds) {
+          loggerService.info('SyncService', `Resuming orders sync from checkpoint: ${orderSession.checkpoint}`)
+          session = await syncOptimizer.resumeSession(orderSession.sessionId)
+        }
+
         ordersToSync = await db.getUnsyncedOrders()
         const failedOrders = await db.getFailedOrders()
         ordersToSync = [...ordersToSync, ...failedOrders]
+
+        if (session) {
+          ordersToSync = ordersToSync.slice(session.checkpoint)
+        }
       }
 
       if (ordersToSync.length === 0) {
         loggerService.info('SyncService', 'Orders sync: nothing to sync')
+        if (session) {
+          await syncOptimizer.completeSession(session.sessionId, { successRecords: 0, failedRecords: 0 })
+        }
         this.emit('syncComplete', { type: 'orders', success: true, count: 0 })
         this.emit('statusChange', { type: 'orders', status: 'success' })
         return { success: true, count: 0 }
       }
 
-      loggerService.info('SyncService', `Orders sync: ${ordersToSync.length} orders to sync`)
+      if (!session) {
+        session = await syncOptimizer.createSession('orders')
+        await syncOptimizer.updateSession(session.sessionId, { totalRecords: ordersToSync.length })
+      } else {
+        const remaining = ordersToSync.length
+        await syncOptimizer.updateSession(session.sessionId, { totalRecords: session.checkpoint + remaining })
+      }
+
+      loggerService.info('SyncService', `Orders sync: ${ordersToSync.length} orders to sync${session.checkpoint > 0 ? ` (resuming from ${session.checkpoint})` : ''}`)
+
       const results = { success: 0, failed: 0, errors: [] }
+      if (session) {
+        results.success = session.successRecords || 0
+        results.failed = session.failedRecords || 0
+      }
 
       const batchSize = 20
       for (let i = 0; i < ordersToSync.length; i += batchSize) {
         const batch = ordersToSync.slice(i, i + batchSize)
-        
-        try {
-          const orderDataList = batch.map((order) => ({
-            order_no: order.order_no,
-            erp_order_id: order.erp_order_id,
-            total_amount: order.total_amount,
-            discount_amount: order.discount_amount || 0,
-            pay_amount: order.pay_amount,
-            pay_type: order.pay_type,
-            pay_status: order.pay_status ?? 1,
-            order_status: order.order_status ?? 2,
-            cashier_id: order.cashier_id,
-            cashier_name: order.cashier_name,
-            member_id: order.member_id,
-            member_name: order.member_name,
-            remark: order.remark,
-            created_at: order.created_at,
-            items: (order.items || []).map((item) => ({
-              product_id: item.product_id,
-              erp_goods_id: item.erp_goods_id,
-              product_name: item.product_name,
-              barcode: item.barcode,
-              image: item.image,
-              price: item.price,
-              quantity: item.quantity,
-              subtotal: item.subtotal,
-              total_amount: item.total_amount || item.subtotal,
-              discount_amount: item.discount_amount || 0,
-              pay_amount: item.pay_amount || item.subtotal,
-            })),
-            payments: (order.payments || []).map((payment) => ({
-              payment_no: payment.payment_no,
-              pay_type: payment.pay_type,
-              pay_amount: payment.pay_amount || payment.amount,
-              pay_status: payment.pay_status ?? 1,
-              pay_time: payment.pay_time,
-              transaction_id: payment.transaction_id,
-            })),
-            sync_status: order.sync_status,
-            sync_attempts: order.sync_attempts || 0,
-            sync_error: order.sync_error,
-          }))
+        const globalIndex = (session?.checkpoint || 0) + i
 
-          const response = await api.batchSyncOrders(orderDataList)
+        try {
+          const { records: incrementalData } = syncOptimizer.buildIncrementalSyncData(
+            batch.map((order) => ({
+              id: order.id,
+              order_no: order.order_no,
+              erp_order_id: order.erp_order_id,
+              total_amount: order.total_amount,
+              discount_amount: order.discount_amount || 0,
+              pay_amount: order.pay_amount,
+              pay_type: order.pay_type,
+              pay_status: order.pay_status ?? 1,
+              order_status: order.order_status ?? 2,
+              cashier_id: order.cashier_id,
+              cashier_name: order.cashier_name,
+              member_id: order.member_id,
+              member_name: order.member_name,
+              remark: order.remark,
+              created_at: order.created_at,
+              items: (order.items || []).map((item) => ({
+                product_id: item.product_id,
+                erp_goods_id: item.erp_goods_id,
+                product_name: item.product_name,
+                barcode: item.barcode,
+                image: item.image,
+                price: item.price,
+                quantity: item.quantity,
+                subtotal: item.subtotal,
+                total_amount: item.total_amount || item.subtotal,
+                discount_amount: item.discount_amount || 0,
+                pay_amount: item.pay_amount || item.subtotal,
+              })),
+              payments: (order.payments || []).map((payment) => ({
+                payment_no: payment.payment_no,
+                pay_type: payment.pay_type,
+                pay_amount: payment.pay_amount || payment.amount,
+                pay_status: payment.pay_status ?? 1,
+                pay_time: payment.pay_time,
+                transaction_id: payment.transaction_id,
+              })),
+              sync_status: order.sync_status,
+              sync_attempts: order.sync_attempts || 0,
+              sync_error: order.sync_error,
+            })),
+            { primaryKey: 'order_no' }
+          )
+
+          const response = await api.batchSyncOrders(incrementalData)
           const result = response.data || {}
-          
+
           const failOrderMap = new Map()
           if (result.failOrders) {
             result.failOrders.forEach((fail) => {
@@ -234,12 +270,14 @@ class SyncService {
             })
           }
 
+          const batchFailedIds = []
           for (const order of batch) {
             if (failOrderMap.has(order.order_no)) {
               results.failed++
               const error = failOrderMap.get(order.order_no)
               results.errors.push({ orderId: order.id, orderNo: order.order_no, error })
               await db.updateOrderSyncStatus(order.id, 2, error)
+              batchFailedIds.push(order.id)
               loggerService.warn('SyncService', 'Order sync failed', {
                 orderNo: order.order_no,
                 error,
@@ -249,21 +287,57 @@ class SyncService {
               results.success++
             }
           }
+
+          if (session) {
+            await syncOptimizer.markCheckpoint(
+              session.sessionId,
+              globalIndex + batch.length,
+              (session.checkpoint || 0) + i + batch.length,
+              results.success,
+              results.failed,
+              batchFailedIds
+            )
+          }
+
+          this.emit('progress', {
+            type: 'orders',
+            current: globalIndex + batch.length,
+            total: session?.totalRecords || ordersToSync.length,
+            success: results.success,
+            failed: results.failed,
+          })
         } catch (error) {
+          const batchFailedIds = []
           for (const order of batch) {
             results.failed++
             results.errors.push({ orderId: order.id, orderNo: order.order_no, error: error.message })
             await db.updateOrderSyncStatus(order.id, 2, error.message)
+            batchFailedIds.push(order.id)
             loggerService.warn('SyncService', 'Order sync batch failed', {
               orderNo: order.order_no,
               error: error.message,
             })
+          }
+
+          if (session) {
+            await syncOptimizer.markCheckpoint(
+              session.sessionId,
+              globalIndex + batch.length,
+              (session.checkpoint || 0) + i + batch.length,
+              results.success,
+              results.failed,
+              batchFailedIds
+            )
           }
         }
       }
 
       await db.setSetting('lastOrderSyncTime', new Date().toISOString())
       await db.addSyncRecord('orders', results.failed > 0 ? 'partial' : 'success', results)
+
+      if (session) {
+        await syncOptimizer.completeSession(session.sessionId, results)
+      }
 
       loggerService.info('SyncService', 'Orders sync completed', {
         success: results.success,
@@ -278,6 +352,9 @@ class SyncService {
 
       return results
     } catch (error) {
+      if (session) {
+        await syncOptimizer.failSession(session.sessionId, error)
+      }
       await db.addSyncRecord('orders', 'failed', { error: error.message })
       loggerService.error('SyncService', 'Orders sync failed', { error: error.message })
       this.emit('syncComplete', { type: 'orders', success: false, error: error.message })
