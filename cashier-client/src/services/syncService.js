@@ -1176,7 +1176,7 @@ class SyncService {
             status: member.status,
           }
           const response = await api.saveMember(memberData)
-          if (response?.code === 0) {
+          if (response?.code === 0 || response?.code === 200) {
             await db.updateMemberSyncStatus(member.id, 1)
             results.success++
           } else {

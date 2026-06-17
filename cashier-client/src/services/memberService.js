@@ -83,6 +83,17 @@ class MemberService {
     this.cardCache = new MemberLRUCache(200)
     this.currentMember = null
     this._birthdayReminderShown = new Set()
+    this._initialized = false
+  }
+
+  async init() {
+    if (this._initialized) return
+    try {
+      await this.ensureDefaultConfig()
+      this._initialized = true
+    } catch (error) {
+      console.error('MemberService init failed:', error)
+    }
   }
 
   _cacheKey(type, value) {
@@ -609,6 +620,145 @@ class MemberService {
       pointsNeeded: Math.max(0, pointsNeeded),
       progressPercent,
     }
+  }
+
+  async calculateProjectedLevel(memberId, orderAmount) {
+    const member = await this.getMemberById(memberId)
+    if (!member) {
+      return null
+    }
+
+    const currentTotalPoints = member.total_points !== undefined && member.total_points !== null
+      ? member.total_points
+      : (member.points || 0)
+
+    let projectedPoints = currentTotalPoints
+    let projectedPointsEarned = 0
+
+    if (orderAmount > 0) {
+      const pointsCalc = await this.calculatePoints(memberId, orderAmount)
+      projectedPointsEarned = pointsCalc?.totalPoints || 0
+      projectedPoints = currentTotalPoints + projectedPointsEarned
+    }
+
+    const currentLevel = await this.calculateMemberLevel(currentTotalPoints)
+    const projectedLevel = await this.calculateMemberLevel(projectedPoints)
+
+    const willUpgrade = projectedLevel && currentLevel &&
+      projectedLevel.levelId !== currentLevel.levelId
+
+    return {
+      currentTotalPoints,
+      projectedPoints,
+      projectedPointsEarned,
+      currentLevel,
+      projectedLevel,
+      willUpgrade,
+      currentDiscountRate: currentLevel?.discountRate || 100,
+      projectedDiscountRate: projectedLevel?.discountRate || 100,
+      additionalDiscount: willUpgrade ? (currentLevel?.discountRate || 100) - (projectedLevel?.discountRate || 100) : 0,
+    }
+  }
+
+  async getDefaultMemberLevels() {
+    return [
+      {
+        id: 1,
+        level_code: 'NORMAL',
+        level_name: '普通会员',
+        min_points: 0,
+        max_points: 999,
+        discount_rate: 100,
+        point_rate: 1,
+        sort_order: 1,
+        status: 1,
+        sync_status: 1,
+      },
+      {
+        id: 2,
+        level_code: 'SILVER',
+        level_name: '白银会员',
+        min_points: 1000,
+        max_points: 4999,
+        discount_rate: 95,
+        point_rate: 1.2,
+        sort_order: 2,
+        status: 1,
+        sync_status: 1,
+      },
+      {
+        id: 3,
+        level_code: 'GOLD',
+        level_name: '黄金会员',
+        min_points: 5000,
+        max_points: 19999,
+        discount_rate: 88,
+        point_rate: 1.5,
+        sort_order: 3,
+        status: 1,
+        sync_status: 1,
+      },
+      {
+        id: 4,
+        level_code: 'PLATINUM',
+        level_name: '铂金会员',
+        min_points: 20000,
+        max_points: 49999,
+        discount_rate: 85,
+        point_rate: 1.8,
+        sort_order: 4,
+        status: 1,
+        sync_status: 1,
+      },
+      {
+        id: 5,
+        level_code: 'DIAMOND',
+        level_name: '钻石会员',
+        min_points: 50000,
+        max_points: null,
+        discount_rate: 80,
+        point_rate: 2,
+        sort_order: 5,
+        status: 1,
+        sync_status: 1,
+      },
+    ]
+  }
+
+  async getDefaultPointRules() {
+    return [
+      {
+        id: 1,
+        rule_code: 'DEFAULT_CONSUME',
+        rule_name: '消费送积分',
+        rule_type: 1,
+        rule_value: 1,
+        min_amount: 0,
+        max_amount: null,
+        status: 1,
+        sync_status: 1,
+        priority: 1,
+        stackable: 0,
+      },
+    ]
+  }
+
+  async ensureDefaultConfig() {
+    let levels = await db.getMemberLevels()
+    if (!levels || levels.length === 0) {
+      const defaultLevels = await this.getDefaultMemberLevels()
+      await db.bulkUpsertMemberLevels(defaultLevels)
+      levels = defaultLevels
+    }
+
+    let rules = await db.getPointRules()
+    if (!rules || rules.length === 0) {
+      const defaultRules = await this.getDefaultPointRules()
+      await db.bulkUpsertPointRules(defaultRules)
+      rules = defaultRules
+    }
+
+    return { levels, rules }
   }
 
   async getBirthdayMembers(days = 7) {

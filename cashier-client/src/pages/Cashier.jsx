@@ -36,6 +36,7 @@ function Cashier() {
   const [usePoints, setUsePoints] = useState(false)
   const [deductPoints, setDeductPoints] = useState(0)
   const [pointsEarnPreview, setPointsEarnPreview] = useState(0)
+  const [projectedLevelInfo, setProjectedLevelInfo] = useState(null)
   const [birthdayTipVisible, setBirthdayTipVisible] = useState(false)
   const [birthdayMember, setBirthdayMember] = useState(null)
 
@@ -68,6 +69,7 @@ function Cashier() {
   const initData = async () => {
     try {
       await initMockData()
+      await memberService.init()
       loadCategories()
       loadProducts()
       loadRecommendData()
@@ -338,25 +340,65 @@ function Cashier() {
   const totalAmount = cart.reduce((sum, item) => sum + item.subtotal, 0)
   const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0)
 
-  const memberDiscount = useMemo(() => {
-    if (!currentMember || !currentMember.level_name) return 0
-    const discountRate = (currentMember.discount_rate || 100) / 100
-    return Number((totalAmount * (1 - discountRate)).toFixed(2))
-  }, [currentMember, totalAmount])
-
-  const memberLevelDiscountInfo = useMemo(() => {
-    if (!currentMember || !currentMember.level_name) return null
-    const discountRate = (currentMember.discount_rate || 100)
-    return {
-      levelName: currentMember.level_name,
-      discount: discountRate < 100 ? `${discountRate / 10}折` : '无折扣',
-      discountRate,
-    }
-  }, [currentMember])
-
   const pointsValue = useMemo(() => {
     return Number((deductPoints * 0.01).toFixed(2))
   }, [deductPoints])
+
+  useEffect(() => {
+    const calculateProjectedLevel = async () => {
+      if (!currentMember || totalAmount <= 0) {
+        setProjectedLevelInfo(null)
+        return
+      }
+      try {
+        const baseDiscountRate = (currentMember.discount_rate || 100) / 100
+        const baseMemberDiscount = Number((totalAmount * (1 - baseDiscountRate)).toFixed(2))
+        const basePayAmount = Math.max(0, Number((totalAmount - baseMemberDiscount - discount - pointsValue).toFixed(2)))
+
+        const projected = await memberService.calculateProjectedLevel(currentMember.id, basePayAmount)
+        setProjectedLevelInfo(projected)
+      } catch (error) {
+        console.error('Calculate projected level failed:', error)
+        setProjectedLevelInfo(null)
+      }
+    }
+    calculateProjectedLevel()
+  }, [currentMember, totalAmount, discount, pointsValue])
+
+  const memberDiscount = useMemo(() => {
+    if (!currentMember || !currentMember.level_name) return 0
+
+    let discountRate = (currentMember.discount_rate || 100)
+    if (projectedLevelInfo?.willUpgrade && projectedLevelInfo?.projectedDiscountRate) {
+      discountRate = projectedLevelInfo.projectedDiscountRate
+    }
+    discountRate = discountRate / 100
+    return Number((totalAmount * (1 - discountRate)).toFixed(2))
+  }, [currentMember, totalAmount, projectedLevelInfo])
+
+  const memberLevelDiscountInfo = useMemo(() => {
+    if (!currentMember || !currentMember.level_name) return null
+
+    let displayLevelName = currentMember.level_name
+    let displayDiscountRate = (currentMember.discount_rate || 100)
+    let isProjected = false
+
+    if (projectedLevelInfo?.willUpgrade && projectedLevelInfo?.projectedLevel) {
+      displayLevelName = projectedLevelInfo.projectedLevel.levelName
+      displayDiscountRate = projectedLevelInfo.projectedDiscountRate
+      isProjected = true
+    }
+
+    return {
+      levelName: displayLevelName,
+      discount: displayDiscountRate < 100 ? `${displayDiscountRate / 10}折` : '无折扣',
+      discountRate: displayDiscountRate,
+      isProjected,
+      projectedLevel: projectedLevelInfo?.projectedLevel,
+      currentLevel: projectedLevelInfo?.currentLevel,
+      additionalDiscount: projectedLevelInfo?.additionalDiscount || 0,
+    }
+  }, [currentMember, projectedLevelInfo])
 
   const maxDeductPoints = useMemo(() => {
     if (!currentMember) return 0
@@ -534,17 +576,21 @@ function Cashier() {
             message.info(`赠送积分：+${pointsResult.points}`)
           }
           if (pointsResult.levelUpdated && pointsResult.levelInfo) {
-            message.success({
-              content: (
-                <span>
-                  🎉 恭喜升级为「<b>{pointsResult.levelInfo.levelName}</b>」！
-                  {pointsResult.levelInfo.discountRate < 100 && (
-                    <span> 享受<b>{pointsResult.levelInfo.discountRate / 10}折</b>优惠</span>
-                  )}
-                </span>
-              ),
-              duration: 5,
-            })
+            const wasProjected = projectedLevelInfo?.willUpgrade &&
+              projectedLevelInfo?.projectedLevel?.levelId === pointsResult.levelInfo.levelId
+            if (!wasProjected) {
+              message.success({
+                content: (
+                  <span>
+                    🎉 恭喜升级为「<b>{pointsResult.levelInfo.levelName}</b>」！
+                    {pointsResult.levelInfo.discountRate < 100 && (
+                      <span> 享受<b>{pointsResult.levelInfo.discountRate / 10}折</b>优惠</span>
+                    )}
+                  </span>
+                ),
+                duration: 5,
+              })
+            }
           }
         } catch (e) {
           console.warn('Add points failed:', e)
@@ -700,17 +746,21 @@ function Cashier() {
             message.info(`赠送积分：+${pointsResult.points}`)
           }
           if (pointsResult.levelUpdated && pointsResult.levelInfo) {
-            message.success({
-              content: (
-                <span>
-                  🎉 恭喜升级为「<b>{pointsResult.levelInfo.levelName}</b>」！
-                  {pointsResult.levelInfo.discountRate < 100 && (
-                    <span> 享受<b>{pointsResult.levelInfo.discountRate / 10}折</b>优惠</span>
-                  )}
-                </span>
-              ),
-              duration: 5,
-            })
+            const wasProjected = levelInfo?.isProjected &&
+              levelInfo?.projectedLevel?.levelId === pointsResult.levelInfo.levelId
+            if (!wasProjected) {
+              message.success({
+                content: (
+                  <span>
+                    🎉 恭喜升级为「<b>{pointsResult.levelInfo.levelName}</b>」！
+                    {pointsResult.levelInfo.discountRate < 100 && (
+                      <span> 享受<b>{pointsResult.levelInfo.discountRate / 10}折</b>优惠</span>
+                    )}
+                  </span>
+                ),
+                duration: 5,
+              })
+            }
           }
         } catch (e) {
           console.warn('Add points failed:', e)
@@ -1015,6 +1065,16 @@ function Cashier() {
                 <div style={{ marginTop: 8, padding: 8, background: 'rgba(255,255,255,0.15)', borderRadius: 6 }}>
                   <GiftOutlined style={{ marginRight: 4 }} />
                   本次消费预计赠送积分：<b>+{pointsEarnPreview}</b>
+                </div>
+              )}
+              {memberLevelDiscountInfo?.isProjected && memberLevelDiscountInfo?.additionalDiscount > 0 && (
+                <div style={{ marginTop: 8, padding: 8, background: 'linear-gradient(135deg, #fff7e6 0%, #ffe7ba 100%)', borderRadius: 6, color: '#d46b08' }}>
+                  <CrownOutlined style={{ marginRight: 4 }} />
+                  <span>
+                    🎉 本单消费后升级为「<b>{memberLevelDiscountInfo.projectedLevel.levelName}</b>」！
+                    已按{memberLevelDiscountInfo.discount}结算，额外优惠
+                    <b>¥{(totalAmount * memberLevelDiscountInfo.additionalDiscount / 10000).toFixed(2)}</b>
+                  </span>
                 </div>
               )}
             </Card>

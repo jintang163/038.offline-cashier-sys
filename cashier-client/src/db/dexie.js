@@ -659,7 +659,72 @@ class DexieCache {
   }
 
   async getMemberLevels() {
-    return await db.member_levels.where('status').equals(1).sortBy('min_points')
+    let levels = await db.member_levels.where('status').equals(1).sortBy('min_points')
+    if (!levels || levels.length === 0) {
+      levels = [
+        {
+          id: 1,
+          level_code: 'NORMAL',
+          level_name: '普通会员',
+          min_points: 0,
+          max_points: 999,
+          discount_rate: 100,
+          point_rate: 1,
+          sort_order: 1,
+          status: 1,
+          sync_status: 1,
+        },
+        {
+          id: 2,
+          level_code: 'SILVER',
+          level_name: '白银会员',
+          min_points: 1000,
+          max_points: 4999,
+          discount_rate: 95,
+          point_rate: 1.2,
+          sort_order: 2,
+          status: 1,
+          sync_status: 1,
+        },
+        {
+          id: 3,
+          level_code: 'GOLD',
+          level_name: '黄金会员',
+          min_points: 5000,
+          max_points: 19999,
+          discount_rate: 88,
+          point_rate: 1.5,
+          sort_order: 3,
+          status: 1,
+          sync_status: 1,
+        },
+        {
+          id: 4,
+          level_code: 'PLATINUM',
+          level_name: '铂金会员',
+          min_points: 20000,
+          max_points: 49999,
+          discount_rate: 85,
+          point_rate: 1.8,
+          sort_order: 4,
+          status: 1,
+          sync_status: 1,
+        },
+        {
+          id: 5,
+          level_code: 'DIAMOND',
+          level_name: '钻石会员',
+          min_points: 50000,
+          max_points: null,
+          discount_rate: 80,
+          point_rate: 2,
+          sort_order: 5,
+          status: 1,
+          sync_status: 1,
+        },
+      ]
+    }
+    return levels
   }
 
   async bulkUpsertMemberLevels(levels) {
@@ -681,7 +746,7 @@ class DexieCache {
 
   async getPointRules() {
     const now = new Date().toISOString()
-    return await db.point_rules
+    let rules = await db.point_rules
       .where('status')
       .equals(1)
       .filter((r) => {
@@ -690,6 +755,24 @@ class DexieCache {
         return true
       })
       .toArray()
+    if (!rules || rules.length === 0) {
+      rules = [
+        {
+          id: 1,
+          rule_code: 'DEFAULT_CONSUME',
+          rule_name: '消费送积分',
+          rule_type: 1,
+          rule_value: 1,
+          min_amount: 0,
+          max_amount: null,
+          status: 1,
+          sync_status: 1,
+          priority: 1,
+          stackable: 0,
+        },
+      ]
+    }
+    return rules
   }
 
   async bulkUpsertPointRules(rules) {
