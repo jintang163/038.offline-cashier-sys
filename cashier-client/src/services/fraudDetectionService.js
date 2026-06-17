@@ -131,7 +131,7 @@ class FraudDetectionService {
     try {
       if (navigator.onLine) {
         const response = await api.getFraudDetectionRules()
-        if (response?.data) {
+        if (response?.code === 0 && response?.data) {
           await db.saveFraudDetectionRules(response.data)
           return
         }
@@ -372,14 +372,26 @@ class FraudDetectionService {
     }
 
     try {
+      const lockLog = await db.operation_lock_logs.get(lockId)
+      if (!lockLog) {
+        return { success: false, error: '锁定记录不存在' }
+      }
+
+      if (lockLog.sync_status !== 1) {
+        const syncResult = await this.syncLockLogs()
+        if (!syncResult.success) {
+          console.warn('同步锁定日志失败，继续尝试验证:', syncResult.error)
+        }
+      }
+
       const response = await api.verifyOperationLock({
-        lockId,
+        lockNo: lockLog.lock_no,
         managerUsername: managerInfo.username,
         managerPassword: managerInfo.password,
         verifyRemark,
       })
 
-      if (response?.success) {
+      if (response?.code === 0) {
         await db.updateOperationLockVerifyStatus(
           lockId,
           1,
@@ -429,7 +441,7 @@ class FraudDetectionService {
       if (unsyncedLogs.length === 0) return { success: true, synced: 0 }
 
       const response = await api.syncOperationLockLogs(unsyncedLogs)
-      if (response?.success) {
+      if (response?.code === 0) {
         for (const log of unsyncedLogs) {
           await db.updateLockLogSyncStatus(log.id, 1)
         }

@@ -20,6 +20,8 @@ import ErpSyncLogPage from './pages/erp/ErpSyncLogPage'
 import ErpSyncTaskPage from './pages/erp/ErpSyncTaskPage'
 import ErpProductSyncStrategyPage from './pages/erp/ErpProductSyncStrategyPage'
 import ErpMonitorDashboard from './pages/erp/ErpMonitorDashboard'
+import SuspiciousStores from './pages/fraud/SuspiciousStores'
+import FraudAlerts from './pages/fraud/FraudAlerts'
 
 function App() {
   const [dbInit, setDbInit] = useState(false)
@@ -170,6 +172,22 @@ function App() {
         element={
           <ProtectedRoute>
             <ErpMonitorDashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/fraud/suspicious-stores"
+        element={
+          <ProtectedRoute>
+            <SuspiciousStores />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/fraud/alerts"
+        element={
+          <ProtectedRoute>
+            <FraudAlerts />
           </ProtectedRoute>
         }
       />

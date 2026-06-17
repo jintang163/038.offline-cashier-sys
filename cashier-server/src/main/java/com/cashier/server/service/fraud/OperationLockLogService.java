@@ -13,6 +13,8 @@ public interface OperationLockLogService extends IService<OperationLockLog> {
 
     Map<String, Object> verifyOperationLock(Long lockId, String managerUsername, String managerPassword, String verifyRemark);
 
+    Map<String, Object> verifyOperationLockByLockNo(String lockNo, String managerUsername, String managerPassword, String verifyRemark);
+
     Map<String, Object> syncOperationLockLogs(List<OperationLockLog> lockLogs);
 
     boolean updateVerifyStatus(Long lockId, Integer verifyStatus, Long verifyUserId, String verifyUserName, String verifyRemark);

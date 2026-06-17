@@ -651,7 +651,7 @@ class ApiService {
   async getFraudDetectionRules() {
     return this.request(
       {
-        url: '/fraud/rules',
+        url: '/fraud/rules/enabled',
         method: 'get',
       },
       { offlineQueue: false, offlineData: null }
@@ -661,7 +661,7 @@ class ApiService {
   async verifyOperationLock(params) {
     return this.request(
       {
-        url: '/fraud/lock/verify',
+        url: '/fraud/locks/verify-by-lockno',
         method: 'post',
         data: params,
       },
@@ -672,7 +672,7 @@ class ApiService {
   async syncOperationLockLogs(lockLogs) {
     return this.request(
       {
-        url: '/fraud/lock/sync',
+        url: '/fraud/locks/sync',
         method: 'post',
         data: lockLogs,
       },
@@ -683,7 +683,7 @@ class ApiService {
   async getSuspiciousStores(params = {}) {
     return this.request(
       {
-        url: '/fraud/suspicious-stores',
+        url: '/fraud/suspicious-stores/list',
         method: 'get',
         params,
       },
@@ -694,7 +694,7 @@ class ApiService {
   async getFraudAlerts(params = {}) {
     return this.request(
       {
-        url: '/fraud/alerts',
+        url: '/fraud/alerts/list',
         method: 'get',
         params,
       },
@@ -705,8 +705,18 @@ class ApiService {
   async analyzeStoreFraud(storeId) {
     return this.request(
       {
-        url: `/fraud/analyze/${storeId}`,
+        url: `/fraud/suspicious-stores/${storeId}/analyze`,
         method: 'post',
+      },
+      { offlineQueue: false, offlineData: null }
+    )
+  }
+
+  async getFraudOverview() {
+    return this.request(
+      {
+        url: '/fraud/analysis/overview',
+        method: 'get',
       },
       { offlineQueue: false, offlineData: null }
     )

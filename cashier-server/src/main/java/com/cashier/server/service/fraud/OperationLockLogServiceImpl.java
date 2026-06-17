@@ -122,6 +122,21 @@ public class OperationLockLogServiceImpl extends ServiceImpl<OperationLockLogMap
     }
 
     @Override
+    public Map<String, Object> verifyOperationLockByLockNo(String lockNo, String managerUsername, String managerPassword, String verifyRemark) {
+        OperationLockLog lockLog = getOne(new LambdaQueryWrapper<OperationLockLog>()
+                .eq(OperationLockLog::getLockNo, lockNo));
+
+        if (lockLog == null) {
+            Map<String, Object> result = new HashMap<>();
+            result.put("success", false);
+            result.put("message", "锁定记录不存在，请稍后重试");
+            return result;
+        }
+
+        return verifyOperationLock(lockLog.getId(), managerUsername, managerPassword, verifyRemark);
+    }
+
+    @Override
     @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> syncOperationLockLogs(List<OperationLockLog> lockLogs) {
         Map<String, Object> result = new HashMap<>();

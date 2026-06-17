@@ -55,6 +55,16 @@ public class OperationLockLogController {
                 id, managerUsername, managerPassword, verifyRemark));
     }
 
+    @PostMapping("/verify-by-lockno")
+    public Result<Map<String, Object>> verifyByLockNo(@RequestBody Map<String, Object> params) {
+        String lockNo = params.get("lockNo") != null ? params.get("lockNo").toString() : null;
+        String managerUsername = params.get("managerUsername") != null ? params.get("managerUsername").toString() : null;
+        String managerPassword = params.get("managerPassword") != null ? params.get("managerPassword").toString() : null;
+        String verifyRemark = params.get("verifyRemark") != null ? params.get("verifyRemark").toString() : null;
+        return Result.success(operationLockLogService.verifyOperationLockByLockNo(
+                lockNo, managerUsername, managerPassword, verifyRemark));
+    }
+
     @PostMapping("/sync")
     public Result<Map<String, Object>> sync(@RequestBody List<OperationLockLog> lockLogs) {
         return Result.success(operationLockLogService.syncOperationLockLogs(lockLogs));

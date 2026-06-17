@@ -2,6 +2,7 @@ import db from '../db/dexie'
 import api from '../api/request'
 import dailyReportService from './dailyReportService'
 import invoiceService from './invoiceService'
+import fraudDetectionService from './fraudDetectionService'
 
 class SyncService {
   constructor() {
@@ -693,6 +694,12 @@ class SyncService {
         failed: 0,
       }))
 
+      const fraudLockResult = await this.syncFraudLockLogs().catch((e) => ({
+        success: false,
+        error: e.message,
+        synced: 0,
+      }))
+
       return {
         success: true,
         products: productResult,
@@ -707,6 +714,7 @@ class SyncService {
         invoices: invoiceResult,
         invoiceWallets: invoiceWalletResult,
         refunds: refundResult,
+        fraudLockLogs: fraudLockResult,
       }
     } finally {
       this.syncing = false
@@ -1092,6 +1100,36 @@ class SyncService {
     const failedRefunds = await db.getFailedRefundOrders()
     const refundIds = failedRefunds.map((r) => r.id)
     return this.syncRefundOrders(refundIds)
+  }
+
+  async syncFraudLockLogs() {
+    if (!navigator.onLine) {
+      throw new Error('OFFLINE')
+    }
+
+    this.emit('syncStart', { type: 'fraudLockLogs' })
+    this.emit('statusChange', { type: 'fraudLockLogs', status: 'syncing' })
+
+    try {
+      const result = await fraudDetectionService.syncLockLogs()
+
+      await db.setSetting('lastFraudLockSyncTime', new Date().toISOString())
+      await db.addSyncRecord('fraudLockLogs', result.success ? 'success' : 'partial', result)
+
+      this.emit('syncComplete', { type: 'fraudLockLogs', success: result.success, result })
+      this.emit('statusChange', {
+        type: 'fraudLockLogs',
+        status: result.success ? 'success' : 'partial',
+        result,
+      })
+
+      return result
+    } catch (error) {
+      await db.addSyncRecord('fraudLockLogs', 'failed', { error: error.message })
+      this.emit('syncComplete', { type: 'fraudLockLogs', success: false, error: error.message })
+      this.emit('statusChange', { type: 'fraudLockLogs', status: 'failed', error: error.message })
+      throw error
+    }
   }
 }
 

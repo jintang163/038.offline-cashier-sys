@@ -18,6 +18,9 @@ import {
   AppstoreOutlined,
   SafetyOutlined,
   QrcodeOutlined,
+  WarningOutlined,
+  BellOutlined,
+  AlertOutlined,
 } from '@ant-design/icons'
 import useNetworkStatus from '../hooks/useNetwork'
 import DisasterBadge from './DisasterBadge'
@@ -109,6 +112,25 @@ function AppLayout({ children }) {
           icon: <ProductOutlined />,
           label: '商品同步策略',
           onClick: () => navigate('/erp/product-sync-strategy'),
+        },
+      ],
+    },
+    {
+      key: 'fraud',
+      icon: <AlertOutlined />,
+      label: 'AI反欺诈管理',
+      children: [
+        {
+          key: '/fraud/suspicious-stores',
+          icon: <WarningOutlined />,
+          label: '可疑门店',
+          onClick: () => navigate('/fraud/suspicious-stores'),
+        },
+        {
+          key: '/fraud/alerts',
+          icon: <BellOutlined />,
+          label: '风险告警',
+          onClick: () => navigate('/fraud/alerts'),
         },
       ],
     },
