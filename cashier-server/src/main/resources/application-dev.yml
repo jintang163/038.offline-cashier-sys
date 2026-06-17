@@ -51,3 +51,10 @@ tax:
     retry-times: 3
     retry-interval: 5000
     default-tax-rate: 0.01
+
+minio:
+  endpoint: http://localhost:9000
+  access-key: minioadmin
+  secret-key: minioadmin
+  bucket-name: cashier-logs
+  expiry: 604800

@@ -722,6 +722,165 @@ class ApiService {
     )
   }
 
+  async deviceHeartbeat(params) {
+    return this.request(
+      {
+        url: '/device/heartbeat',
+        method: 'post',
+        data: params,
+      },
+      { offlineQueue: false, offlineData: { success: true, timestamp: Date.now() } }
+    )
+  }
+
+  async saveSelfCheckLog(checkData) {
+    return this.request(
+      {
+        url: '/device/self-check',
+        method: 'post',
+        data: checkData,
+      },
+      { offlineQueue: true, offlineData: null }
+    )
+  }
+
+  async getSelfCheckLogList(params) {
+    return this.request(
+      {
+        url: '/device/self-check/list',
+        method: 'get',
+        params,
+      },
+      { offlineQueue: false, offlineData: null }
+    )
+  }
+
+  async createLogUploadRecord(deviceNo, logDate, logType) {
+    return this.request(
+      {
+        url: '/device/log/create-upload',
+        method: 'post',
+        data: { deviceNo, logDate, logType },
+      },
+      { offlineQueue: false, offlineData: null }
+    )
+  }
+
+  async uploadLogFile(formData) {
+    try {
+      if (!navigator.onLine) {
+        throw new Error('OFFLINE')
+      }
+      const token = getToken()
+      const headers = {}
+      if (token) {
+        headers.Authorization = `Bearer ${token}`
+      }
+      const response = await axios.post(baseURL + '/device/log/upload', formData, {
+        headers: {
+          ...headers,
+          'Content-Type': 'multipart/form-data',
+        },
+        timeout: 60000,
+      })
+      const res = response.data
+      if (res.code !== undefined && res.code !== 0 && res.code !== 200) {
+        return Promise.reject(new Error(res.message || '上传失败'))
+      }
+      return res
+    } catch (error) {
+      if (error.message === 'OFFLINE' || error.code === 'ERR_NETWORK') {
+        throw new Error('网络连接失败，请检查网络设置')
+      }
+      throw error
+    }
+  }
+
+  async getLogUploadList(params) {
+    return this.request(
+      {
+        url: '/device/log/list',
+        method: 'get',
+        params,
+      },
+      { offlineQueue: false, offlineData: null }
+    )
+  }
+
+  async getLogDownloadUrl(id) {
+    return this.request(
+      {
+        url: `/device/log/${id}/download-url`,
+        method: 'get',
+      },
+      { offlineQueue: false, offlineData: null }
+    )
+  }
+
+  async requestRemoteLogPull(params) {
+    return this.request(
+      {
+        url: '/device/log/request-pull',
+        method: 'post',
+        data: params,
+      },
+      { offlineQueue: false, offlineData: null }
+    )
+  }
+
+  async updateLogPullStatus(uploadNo, pullStatus, errorMessage) {
+    return this.request(
+      {
+        url: '/device/log/pull-status',
+        method: 'put',
+        data: { uploadNo, pullStatus, errorMessage },
+      },
+      { offlineQueue: true, offlineData: null }
+    )
+  }
+
+  async getPendingPullLogs(deviceNo) {
+    return this.request(
+      {
+        url: '/device/log/pending-pull',
+        method: 'get',
+        params: { deviceNo },
+      },
+      { offlineQueue: false, offlineData: { records: [] } }
+    )
+  }
+
+  async getDeviceList(params) {
+    return this.request(
+      {
+        url: '/device/list',
+        method: 'get',
+        params,
+      },
+      { offlineQueue: false, offlineData: null }
+    )
+  }
+
+  async getOnlineDeviceList() {
+    return this.request(
+      {
+        url: '/device/online-list',
+        method: 'get',
+      },
+      { offlineQueue: false, offlineData: [] }
+    )
+  }
+
+  async getDeviceMonitorOverview() {
+    return this.request(
+      {
+        url: '/device/monitor/overview',
+        method: 'get',
+      },
+      { offlineQueue: false, offlineData: null }
+    )
+  }
+
   get baseURL() {
     return baseURL
   }

@@ -922,3 +922,84 @@ INSERT INTO fraud_detection_rule (rule_code, rule_name, rule_type, threshold_val
 ('RULE-DISCOUNT-002', '折扣低于5折', 'ABNORMAL_DISCOUNT', 50, 'PERCENT', 1, 3, 1, 1, 1, '订单折扣低于5折（50%），高风险'),
 ('RULE-DISCOUNT-003', '1小时内3单以上低于8折', 'ABNORMAL_DISCOUNT', 3, 'TIMES', 60, 2, 1, 1, 1, '1小时内3单及以上折扣低于8折');
 
+-- =============================================
+-- 21. 设备自检记录表
+-- =============================================
+DROP TABLE IF EXISTS device_self_check_log;
+CREATE TABLE device_self_check_log (
+    id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    check_no VARCHAR(64) NOT NULL COMMENT '自检编号',
+    device_id BIGINT DEFAULT NULL COMMENT '设备ID',
+    device_no VARCHAR(64) DEFAULT NULL COMMENT '设备编号',
+    device_name VARCHAR(100) DEFAULT NULL COMMENT '设备名称',
+    check_type VARCHAR(32) NOT NULL COMMENT '检查类型: NETWORK-网络, PRINTER-打印机, STORAGE-存储, FULL-全面',
+    check_status TINYINT NOT NULL DEFAULT 0 COMMENT '检查状态: 0-待检查 1-检查中 2-检查通过 3-检查异常',
+    network_status TINYINT DEFAULT NULL COMMENT '网络状态: 0-离线 1-在线',
+    network_latency INT DEFAULT NULL COMMENT '网络延迟(ms)',
+    network_speed VARCHAR(50) DEFAULT NULL COMMENT '网络速度',
+    printer_status TINYINT DEFAULT NULL COMMENT '打印机状态: 0-离线 1-在线 2-缺纸 3-故障',
+    printer_name VARCHAR(100) DEFAULT NULL COMMENT '打印机名称',
+    printer_error VARCHAR(500) DEFAULT NULL COMMENT '打印机错误信息',
+    storage_total BIGINT DEFAULT NULL COMMENT '存储总量(字节)',
+    storage_used BIGINT DEFAULT NULL COMMENT '已用存储(字节)',
+    storage_free BIGINT DEFAULT NULL COMMENT '可用存储(字节)',
+    storage_usage_rate DECIMAL(5,2) DEFAULT NULL COMMENT '存储使用率(%)',
+    storage_status TINYINT DEFAULT NULL COMMENT '存储状态: 0-充足 1-警告 2-不足',
+    error_details TEXT DEFAULT NULL COMMENT '异常详情(JSON)',
+    is_alerted TINYINT DEFAULT 0 COMMENT '是否已告警: 0-否 1-是',
+    alert_time DATETIME DEFAULT NULL COMMENT '告警时间',
+    operator_id BIGINT DEFAULT NULL COMMENT '处理人ID',
+    operator_name VARCHAR(50) DEFAULT NULL COMMENT '处理人',
+    handle_status TINYINT DEFAULT 0 COMMENT '处理状态: 0-未处理 1-处理中 2-已处理',
+    handle_remark VARCHAR(500) DEFAULT NULL COMMENT '处理备注',
+    handle_time DATETIME DEFAULT NULL COMMENT '处理时间',
+    create_time DATETIME DEFAULT NULL COMMENT '创建时间',
+    update_time DATETIME DEFAULT NULL COMMENT '更新时间',
+    is_deleted TINYINT DEFAULT 0 COMMENT '逻辑删除: 0-未删除 1-已删除',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_check_no (check_no),
+    KEY idx_device_id (device_id),
+    KEY idx_device_no (device_no),
+    KEY idx_check_type (check_type),
+    KEY idx_check_status (check_status),
+    KEY idx_create_time (create_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='设备自检记录表';
+
+-- =============================================
+-- 22. 设备日志上传记录表
+-- =============================================
+DROP TABLE IF EXISTS device_log_upload;
+CREATE TABLE device_log_upload (
+    id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    upload_no VARCHAR(64) NOT NULL COMMENT '上传编号',
+    device_id BIGINT DEFAULT NULL COMMENT '设备ID',
+    device_no VARCHAR(64) DEFAULT NULL COMMENT '设备编号',
+    device_name VARCHAR(100) DEFAULT NULL COMMENT '设备名称',
+    log_date DATE NOT NULL COMMENT '日志日期',
+    log_type VARCHAR(32) NOT NULL DEFAULT 'OPERATION' COMMENT '日志类型: OPERATION-操作日志, ERROR-错误日志, SYSTEM-系统日志, ALL-全部',
+    file_name VARCHAR(255) NOT NULL COMMENT '文件名',
+    file_path VARCHAR(500) DEFAULT NULL COMMENT 'MinIO文件路径',
+    file_size BIGINT DEFAULT NULL COMMENT '文件大小(字节)',
+    file_md5 VARCHAR(64) DEFAULT NULL COMMENT '文件MD5校验',
+    upload_status TINYINT NOT NULL DEFAULT 0 COMMENT '上传状态: 0-待上传 1-上传中 2-上传成功 3-上传失败',
+    upload_attempts INT DEFAULT 0 COMMENT '上传重试次数',
+    upload_error VARCHAR(500) DEFAULT NULL COMMENT '上传错误信息',
+    upload_time DATETIME DEFAULT NULL COMMENT '上传完成时间',
+    operator_id BIGINT DEFAULT NULL COMMENT '拉取人ID',
+    operator_name VARCHAR(50) DEFAULT NULL COMMENT '拉取人',
+    pull_request_time DATETIME DEFAULT NULL COMMENT '远程拉取请求时间',
+    pull_status TINYINT DEFAULT 0 COMMENT '远程拉取状态: 0-未请求 1-待拉取 2-拉取中 3-已拉取 4-拉取失败',
+    pull_remark VARCHAR(500) DEFAULT NULL COMMENT '拉取备注',
+    create_time DATETIME DEFAULT NULL COMMENT '创建时间',
+    update_time DATETIME DEFAULT NULL COMMENT '更新时间',
+    is_deleted TINYINT DEFAULT 0 COMMENT '逻辑删除: 0-未删除 1-已删除',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_upload_no (upload_no),
+    KEY idx_device_id (device_id),
+    KEY idx_device_no (device_no),
+    KEY idx_log_date (log_date),
+    KEY idx_upload_status (upload_status),
+    KEY idx_pull_status (pull_status),
+    KEY idx_create_time (create_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='设备日志上传记录表';
+

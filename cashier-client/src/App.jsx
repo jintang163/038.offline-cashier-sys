@@ -9,9 +9,13 @@ import DailyReport from './pages/DailyReport'
 import Settings from './pages/Settings'
 import InvoiceScan from './pages/InvoiceScan'
 import ProtectedRoute from './components/ProtectedRoute'
+import DeviceSelfCheckAlert from './components/DeviceSelfCheckAlert'
 import db from './utils/db'
 import syncService from './services/syncService'
 import kitchenPrintService from './services/kitchenPrintService'
+import loggerService from './services/loggerService'
+import selfCheckService from './services/selfCheckService'
+import heartbeatService from './services/heartbeatService'
 import ErpConfigPage from './pages/erp/ErpConfigPage'
 import ErpInterfaceMappingPage from './pages/erp/ErpInterfaceMappingPage'
 import ErpFieldMappingPage from './pages/erp/ErpFieldMappingPage'
@@ -34,13 +38,26 @@ function App() {
         setDbInit(true)
         kitchenPrintService.init()
 
+        loggerService.info('App', 'Application initializing')
+
+        heartbeatService.start(30000)
+        loggerService.info('App', 'Heartbeat service started')
+
+        selfCheckService.startAutoCheck(5 * 60 * 1000)
+        loggerService.info('App', 'Self-check service started')
+
+        loggerService.startAutoUpload()
+        loggerService.info('App', 'Auto log upload started')
+
         if (navigator.onLine) {
           try {
             await syncService.fullSync()
           } catch (e) {
-            console.warn('Initial sync failed:', e)
+            loggerService.warn('App', 'Initial sync failed', { error: e.message })
           }
         }
+
+        loggerService.info('App', 'Application initialized successfully')
       } catch (error) {
         console.error('Failed to initialize app:', error)
         setDbError(error.message)
@@ -48,6 +65,12 @@ function App() {
     }
 
     initApp()
+
+    return () => {
+      heartbeatService.stop()
+      selfCheckService.stopAutoCheck()
+      loggerService.stopAutoUpload()
+    }
   }, [])
 
   if (dbError) {
@@ -72,8 +95,10 @@ function App() {
   }
 
   return (
-    <Routes>
-      <Route path="/login" element={<Login />} />
+    <>
+      <DeviceSelfCheckAlert />
+      <Routes>
+        <Route path="/login" element={<Login />} />
       <Route path="/disaster-login" element={<DisasterLogin />} />
       <Route
         path="/invoice/scan"
@@ -192,7 +217,8 @@ function App() {
         }
       />
       <Route path="*" element={<Navigate to="/cashier" replace />} />
-    </Routes>
+      </Routes>
+    </>
   )
 }
 
