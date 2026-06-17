@@ -712,3 +712,89 @@ CREATE TABLE refund_order_item (
     KEY idx_product_id (product_id),
     KEY idx_create_time (create_time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='退款单明细表';
+
+-- =============================================
+-- 19. 收银设备表
+-- =============================================
+DROP TABLE IF EXISTS cashier_device;
+CREATE TABLE cashier_device (
+    id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    device_no VARCHAR(64) NOT NULL COMMENT '设备编号',
+    device_name VARCHAR(100) DEFAULT NULL COMMENT '设备名称',
+    device_type VARCHAR(20) NOT NULL DEFAULT 'cashier' COMMENT '设备类型: cashier-主收银机, backup-备用iPad, tablet-平板',
+    device_model VARCHAR(100) DEFAULT NULL COMMENT '设备型号',
+    os_type VARCHAR(20) DEFAULT NULL COMMENT '操作系统: Windows, macOS, iOS, Android',
+    os_version VARCHAR(50) DEFAULT NULL COMMENT '系统版本',
+    app_version VARCHAR(50) DEFAULT NULL COMMENT 'App版本',
+    ip_address VARCHAR(50) DEFAULT NULL COMMENT 'IP地址',
+    mac_address VARCHAR(50) DEFAULT NULL COMMENT 'MAC地址',
+    location VARCHAR(200) DEFAULT NULL COMMENT '设备位置',
+    device_status TINYINT NOT NULL DEFAULT 1 COMMENT '设备状态: 0-离线 1-在线 2-故障 3-备用',
+    last_heartbeat DATETIME DEFAULT NULL COMMENT '最后心跳时间',
+    last_login_time DATETIME DEFAULT NULL COMMENT '最后登录时间',
+    last_login_user_id BIGINT DEFAULT NULL COMMENT '最后登录用户ID',
+    last_login_user_name VARCHAR(50) DEFAULT NULL COMMENT '最后登录用户名',
+    is_active TINYINT NOT NULL DEFAULT 1 COMMENT '是否启用: 0-禁用 1-启用',
+    is_main_device TINYINT NOT NULL DEFAULT 0 COMMENT '是否主设备: 0-否 1-是',
+    remark VARCHAR(500) DEFAULT NULL COMMENT '备注',
+    sync_status TINYINT DEFAULT 0 COMMENT '同步状态: 0-未同步 1-已同步 2-同步失败',
+    sync_time DATETIME DEFAULT NULL COMMENT '同步时间',
+    create_time DATETIME DEFAULT NULL COMMENT '创建时间',
+    update_time DATETIME DEFAULT NULL COMMENT '更新时间',
+    is_deleted TINYINT DEFAULT 0 COMMENT '逻辑删除: 0-未删除 1-已删除',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_device_no (device_no),
+    KEY idx_device_type (device_type),
+    KEY idx_device_status (device_status),
+    KEY idx_is_main_device (is_main_device),
+    KEY idx_last_heartbeat (last_heartbeat),
+    KEY idx_create_time (create_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='收银设备表';
+
+-- =============================================
+-- 20. 灾备扫码登录Token表
+-- =============================================
+DROP TABLE IF EXISTS disaster_recovery_token;
+CREATE TABLE disaster_recovery_token (
+    id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    token VARCHAR(64) NOT NULL COMMENT '灾备登录Token',
+    shop_id BIGINT DEFAULT NULL COMMENT '门店ID',
+    shop_name VARCHAR(100) DEFAULT NULL COMMENT '门店名称',
+    main_device_id BIGINT NOT NULL COMMENT '主设备ID',
+    main_device_no VARCHAR(64) NOT NULL COMMENT '主设备编号',
+    main_device_name VARCHAR(100) DEFAULT NULL COMMENT '主设备名称',
+    main_device_ip VARCHAR(50) DEFAULT NULL COMMENT '主设备IP（局域网同步用）',
+    operator_id BIGINT NOT NULL COMMENT '创建人ID',
+    operator_name VARCHAR(50) NOT NULL COMMENT '创建人姓名',
+    expire_time DATETIME NOT NULL COMMENT '过期时间',
+    token_status TINYINT NOT NULL DEFAULT 0 COMMENT 'Token状态: 0-待使用 1-已使用 2-已过期 3-已撤销',
+    used_time DATETIME DEFAULT NULL COMMENT '使用时间',
+    used_device_id BIGINT DEFAULT NULL COMMENT '使用设备ID',
+    used_device_no VARCHAR(64) DEFAULT NULL COMMENT '使用设备编号',
+    backup_user_id BIGINT DEFAULT NULL COMMENT '备用端登录用户ID',
+    backup_user_name VARCHAR(50) DEFAULT NULL COMMENT '备用端登录用户名',
+    data_sync_status TINYINT DEFAULT 0 COMMENT '数据同步状态: 0-未同步 1-同步中 2-同步完成 3-同步失败',
+    data_sync_time DATETIME DEFAULT NULL COMMENT '数据同步完成时间',
+    data_hours INT NOT NULL DEFAULT 1 COMMENT '同步最近N小时数据',
+    sync_scope VARCHAR(200) DEFAULT NULL COMMENT '同步范围: orders,products,members,stocks等逗号分隔',
+    remark VARCHAR(500) DEFAULT NULL COMMENT '备注',
+    create_time DATETIME DEFAULT NULL COMMENT '创建时间',
+    update_time DATETIME DEFAULT NULL COMMENT '更新时间',
+    is_deleted TINYINT DEFAULT 0 COMMENT '逻辑删除: 0-未删除 1-已删除',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_token (token),
+    KEY idx_main_device_id (main_device_id),
+    KEY idx_token_status (token_status),
+    KEY idx_data_sync_status (data_sync_status),
+    KEY idx_expire_time (expire_time),
+    KEY idx_create_time (create_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='灾备扫码登录Token表';
+
+-- =============================================
+-- 初始化设备数据
+-- =============================================
+INSERT INTO cashier_device (device_no, device_name, device_type, device_model, os_type, app_version, device_status, is_main_device, is_active, remark, create_time) VALUES
+('DEV-MAIN-001', '主收银机-前台', 'cashier', 'PC-Desktop', 'Windows', '1.0.0', 1, 1, 1, '主收银机，默认启用', NOW()),
+('DEV-BACKUP-001', '备用iPad-01', 'backup', 'iPad Pro 12.9', 'iOS', '1.0.0', 3, 0, 1, '备用iPad，灾备使用', NOW()),
+('DEV-BACKUP-002', '备用iPad-02', 'backup', 'iPad Air', 'iOS', '1.0.0', 3, 0, 1, '备用iPad，灾备使用', NOW());
+

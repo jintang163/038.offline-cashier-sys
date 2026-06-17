@@ -571,6 +571,83 @@ class ApiService {
     )
   }
 
+  async createDisasterToken(params) {
+    return this.request({
+      url: '/disaster/token',
+      method: 'post',
+      data: params,
+    })
+  }
+
+  async verifyDisasterToken(token, deviceNo) {
+    return this.request(
+      {
+        url: '/disaster/token/verify',
+        method: 'get',
+        params: { token, deviceNo },
+      },
+      { offlineQueue: false, offlineData: null }
+    )
+  }
+
+  async useDisasterToken(params) {
+    return this.request(
+      {
+        url: '/disaster/token/use',
+        method: 'post',
+        data: params,
+      },
+      { offlineQueue: false, offlineData: null }
+    )
+  }
+
+  async getDisasterRecoveryData(token, dataHours) {
+    return this.request(
+      {
+        url: '/disaster/data',
+        method: 'get',
+        params: { token, dataHours },
+      },
+      { offlineQueue: false, offlineData: null }
+    )
+  }
+
+  async disasterHeartbeat(params) {
+    return this.request(
+      {
+        url: '/disaster/heartbeat',
+        method: 'post',
+        data: params,
+      },
+      { offlineQueue: false, offlineData: { success: true, timestamp: Date.now() } }
+    )
+  }
+
+  async registerDevice(params) {
+    return this.request(
+      {
+        url: '/disaster/device/register',
+        method: 'post',
+        data: params,
+      },
+      { offlineQueue: false, offlineData: null }
+    )
+  }
+
+  async getMainDevice() {
+    return this.request({
+      url: '/disaster/device/main',
+      method: 'get',
+    })
+  }
+
+  async getOnlineDevices() {
+    return this.request({
+      url: '/disaster/device/online',
+      method: 'get',
+    })
+  }
+
   get baseURL() {
     return baseURL
   }

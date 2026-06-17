@@ -18,7 +18,13 @@ public class WebMvcConfig implements WebMvcConfigurer {
                 .addPathPatterns("/**")
                 .excludePathPatterns(
                         "/auth/login",
-                        "/auth/logout"
+                        "/auth/logout",
+                        "/auth/verify-manager",
+                        "/disaster/token/verify",
+                        "/disaster/token/use",
+                        "/disaster/data",
+                        "/disaster/heartbeat",
+                        "/disaster/device/register"
                 );
     }
 }

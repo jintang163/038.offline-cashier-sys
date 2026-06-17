@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { Spin, Alert } from 'antd'
 import Login from './pages/Login'
+import DisasterLogin from './pages/DisasterLogin'
 import Cashier from './pages/Cashier'
 import Orders from './pages/Orders'
 import DailyReport from './pages/DailyReport'
@@ -71,6 +72,7 @@ function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/disaster-login" element={<DisasterLogin />} />
       <Route
         path="/invoice/scan"
         element={<InvoiceScan />}

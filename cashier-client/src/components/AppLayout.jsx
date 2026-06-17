@@ -1,6 +1,6 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Menu, Badge } from 'antd'
+import { Menu, Badge, Button, Space } from 'antd'
 import {
   ShoppingCartOutlined,
   OrderedListOutlined,
@@ -16,13 +16,21 @@ import {
   ProductOutlined,
   DashboardOutlined,
   AppstoreOutlined,
+  SafetyOutlined,
+  QrcodeOutlined,
 } from '@ant-design/icons'
 import useNetworkStatus from '../hooks/useNetwork'
+import DisasterBadge from './DisasterBadge'
+import DisasterQrcodeModal from './DisasterQrcodeModal'
+import disasterService from '../services/disasterService'
+import { clearAuth } from '../utils/auth'
 
 function AppLayout({ children }) {
   const navigate = useNavigate()
   const location = useLocation()
   const { isOnline } = useNetworkStatus()
+  const [disasterModalVisible, setDisasterModalVisible] = useState(false)
+  const isDisasterMode = disasterService.isDisasterMode()
 
   const menuItems = [
     {
@@ -113,6 +121,8 @@ function AppLayout({ children }) {
   ]
 
   function handleLogout() {
+    disasterService.exitDisasterMode()
+    clearAuth()
     localStorage.removeItem('isLoggedIn')
     localStorage.removeItem('userInfo')
     navigate('/login', { replace: true })
@@ -124,7 +134,16 @@ function AppLayout({ children }) {
     <div className="app-container">
       <div className="main-layout">
         <div className="sidebar">
-          <div className="logo">离线收银系统</div>
+          <div className="logo">
+            {isDisasterMode ? (
+              <Space>
+                <SafetyOutlined style={{ color: '#faad14' }} />
+                离线收银系统<span style={{ color: '#faad14', fontSize: 12 }}>灾备</span>
+              </Space>
+            ) : (
+              '离线收银系统'
+            )}
+          </div>
           <div className="menu">
             <Menu
               theme="dark"
@@ -141,12 +160,30 @@ function AppLayout({ children }) {
               <WifiOutlined style={{ color: isOnline ? '#52c41a' : '#ff4d4f' }} />
             </div>
             <div className="header-right">
-              <span>欢迎，{userInfo.name || '收银员'}</span>
+              <Space>
+                <DisasterBadge />
+                {!isDisasterMode && (
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<QrcodeOutlined />}
+                    onClick={() => setDisasterModalVisible(true)}
+                  >
+                    灾备二维码
+                  </Button>
+                )}
+                <span>欢迎，{userInfo.name || userInfo.nickname || userInfo.username || '收银员'}</span>
+              </Space>
             </div>
           </div>
           <div className="page-content">{children}</div>
         </div>
       </div>
+
+      <DisasterQrcodeModal
+        visible={disasterModalVisible}
+        onClose={() => setDisasterModalVisible(false)}
+      />
     </div>
   )
 }

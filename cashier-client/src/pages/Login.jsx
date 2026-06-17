@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Form, Input, Button, Card, Checkbox, message } from 'antd'
-import { UserOutlined, LockOutlined, LoginOutlined } from '@ant-design/icons'
+import { Form, Input, Button, Card, Checkbox, message, Divider } from 'antd'
+import { UserOutlined, LockOutlined, LoginOutlined, SafetyOutlined } from '@ant-design/icons'
 import apiService from '../api/request'
 import { setToken, setUserInfo, getRemember, setRemember } from '../utils/auth'
 
@@ -131,6 +131,17 @@ function Login() {
             </Button>
           </Form.Item>
         </Form>
+        <Divider style={{ margin: '16px 0' }} plain>
+          <span style={{ color: '#999' }}>其他登录方式</span>
+        </Divider>
+        <Button
+          block
+          icon={<SafetyOutlined />}
+          onClick={() => navigate('/disaster-login', { replace: true })}
+          style={{ borderStyle: 'dashed', borderColor: '#faad14', color: '#faad14' }}
+        >
+          硬件故障灾备登录（备用iPad）
+        </Button>
         <div className="login-footer">
           <p className="tip-text">
             默认账号：<span className="highlight">admin</span> / <span className="highlight">123456</span>
