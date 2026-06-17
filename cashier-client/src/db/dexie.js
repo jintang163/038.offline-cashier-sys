@@ -2,7 +2,7 @@ import Dexie from 'dexie'
 
 const db = new Dexie('CashierCacheDB')
 
-db.version(12).stores({
+db.version(13).stores({
   products: '++id, erp_goods_id, product_name, category_id, category_name, barcode, price, original_price, unit, image, description, stock, status, sort, created_at, updated_at',
   categories: '++id, name, sort, status, created_at, updated_at',
   orders: '++id, order_no, erp_order_id, total_amount, discount_amount, pay_amount, pay_type, pay_status, order_status, sync_status, sync_attempts, sync_error, cashier_id, cashier_name, member_id, member_name, remark, created_at, synced_at',
@@ -31,6 +31,8 @@ db.version(12).stores({
   invoice_wallets: '++id, wallet_no, customer_identifier, customer_type, customer_name, customer_phone, invoice_id, invoice_no, invoice_code, invoice_number, invoice_date, invoice_amount, buyer_name, shop_id, shop_name, scan_source, scan_time, wallet_status, is_read, is_favorite, tags, remark, sync_status, sync_time, created_at, updated_at',
   refund_orders: '++id, refund_no, erp_refund_id, order_id, order_no, erp_order_id, refund_type, refund_amount, original_pay_amount, refund_reason, audit_status, auditor_id, auditor_name, audit_time, audit_remark, sync_status, sync_attempts, sync_error, sync_time, erp_push_status, erp_push_error, erp_push_time, cashier_id, cashier_name, manager_id, manager_name, remark, created_at, updated_at',
   refund_order_items: '++id, refund_order_id, refund_no, order_item_id, product_id, erp_goods_id, product_name, barcode, image, price, original_quantity, refund_quantity, original_amount, refund_amount, discount_amount, remark, created_at',
+  fraud_detection_rules: '++id, rule_code, rule_name, rule_type, threshold_value, threshold_unit, time_window, risk_level, lock_operation, require_online_verify, status, created_at, updated_at',
+  operation_lock_logs: '++id, lock_no, operation_type, trigger_rule, risk_level, lock_reason, lock_details, is_offline, verify_status, verify_user_id, verify_user_name, verify_time, verify_remark, sync_status, sync_time, created_at, updated_at',
 })
 
 class DexieCache {
@@ -2165,6 +2167,100 @@ class DexieCache {
       updateData.erp_refund_id = erpRefundId
     }
     return await db.refund_orders.update(refundId, updateData)
+  }
+
+  async getFraudDetectionRules(ruleType = null) {
+    let collection = db.fraud_detection_rules.where('status').equals(1)
+    if (ruleType) {
+      collection = collection.and((r) => r.rule_type === ruleType)
+    }
+    return await collection.toArray()
+  }
+
+  async saveFraudDetectionRules(rules) {
+    if (!rules || rules.length === 0) return
+    await db.transaction('rw', db.fraud_detection_rules, async () => {
+      await db.fraud_detection_rules.clear()
+      for (const rule of rules) {
+        await db.fraud_detection_rules.add({
+          ...rule,
+          created_at: rule.created_at || new Date().toISOString(),
+          updated_at: rule.updated_at || new Date().toISOString(),
+        })
+      }
+    })
+  }
+
+  async getRecentRefunds(timeWindowMinutes = 60) {
+    const cutoffTime = new Date(Date.now() - timeWindowMinutes * 60 * 1000).toISOString()
+    return await db.refund_orders
+      .filter((r) => r.created_at >= cutoffTime)
+      .sortBy('created_at')
+  }
+
+  async getRecentDiscountOrders(timeWindowMinutes = 60, maxDiscountPercent = 80) {
+    const cutoffTime = new Date(Date.now() - timeWindowMinutes * 60 * 1000).toISOString()
+    return await db.orders
+      .filter((o) => {
+        if (o.created_at < cutoffTime) return false
+        const totalAmount = parseFloat(o.total_amount) || 0
+        const payAmount = parseFloat(o.pay_amount) || 0
+        if (totalAmount <= 0) return false
+        const discountPercent = (payAmount / totalAmount) * 100
+        return discountPercent < maxDiscountPercent
+      })
+      .sortBy('created_at')
+  }
+
+  async createOperationLockLog(lockData) {
+    const lockNo = 'LOCK' + Date.now() + Math.floor(Math.random() * 10000).toString().padStart(4, '0')
+    const data = {
+      ...lockData,
+      lock_no: lockNo,
+      verify_status: 0,
+      sync_status: 0,
+      is_offline: !navigator.onLine,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }
+    const id = await db.operation_lock_logs.add(data)
+    return { id, lock_no: lockNo, ...data }
+  }
+
+  async updateOperationLockVerifyStatus(lockId, verifyStatus, verifyUser = {}, verifyRemark = '') {
+    const updateData = {
+      verify_status: verifyStatus,
+      verify_remark: verifyRemark,
+      verify_time: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }
+    if (verifyUser.userId) updateData.verify_user_id = verifyUser.userId
+    if (verifyUser.username) updateData.verify_user_name = verifyUser.username
+    return await db.operation_lock_logs.update(lockId, updateData)
+  }
+
+  async getUnsyncedLockLogs(limit = 100) {
+    return await db.operation_lock_logs
+      .where('sync_status').equals(0)
+      .limit(limit)
+      .sortBy('created_at')
+  }
+
+  async updateLockLogSyncStatus(lockId, syncStatus) {
+    const updateData = {
+      sync_status: syncStatus,
+      updated_at: new Date().toISOString(),
+    }
+    if (syncStatus === 1) {
+      updateData.sync_time = new Date().toISOString()
+    }
+    return await db.operation_lock_logs.update(lockId, updateData)
+  }
+
+  async getPendingLockLogs() {
+    return await db.operation_lock_logs
+      .where('verify_status').equals(0)
+      .sortBy('created_at')
   }
 }
 

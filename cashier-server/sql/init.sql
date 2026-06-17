@@ -798,3 +798,127 @@ INSERT INTO cashier_device (device_no, device_name, device_type, device_model, o
 ('DEV-BACKUP-001', '备用iPad-01', 'backup', 'iPad Pro 12.9', 'iOS', '1.0.0', 3, 0, 1, '备用iPad，灾备使用', NOW()),
 ('DEV-BACKUP-002', '备用iPad-02', 'backup', 'iPad Air', 'iOS', '1.0.0', 3, 0, 1, '备用iPad，灾备使用', NOW());
 
+-- =============================================
+-- AI反欺诈监测 - 检测规则表
+-- =============================================
+CREATE TABLE fraud_detection_rule (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    rule_code VARCHAR(50) NOT NULL COMMENT '规则编码',
+    rule_name VARCHAR(100) NOT NULL COMMENT '规则名称',
+    rule_type VARCHAR(30) NOT NULL COMMENT '规则类型: REFUND_FREQUENCY-高频退款, REFUND_AMOUNT-大额退款, ABNORMAL_DISCOUNT-异常折扣',
+    threshold_value DECIMAL(12,2) NOT NULL COMMENT '阈值',
+    threshold_unit VARCHAR(20) NOT NULL COMMENT '阈值单位: TIMES-次数, AMOUNT-金额, PERCENT-百分比, MINUTES-分钟',
+    time_window INT DEFAULT 60 COMMENT '时间窗口(分钟)',
+    risk_level INT DEFAULT 1 COMMENT '风险等级: 1-低, 2-中, 3-高',
+    lock_operation TINYINT DEFAULT 0 COMMENT '是否锁定操作: 0-否, 1-是',
+    require_online_verify TINYINT DEFAULT 1 COMMENT '是否需要联网验证: 0-否, 1-是',
+    status TINYINT DEFAULT 1 COMMENT '状态: 0-禁用, 1-启用',
+    remark VARCHAR(500) COMMENT '备注',
+    create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_rule_code (rule_code),
+    KEY idx_rule_type (rule_type),
+    KEY idx_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='反欺诈检测规则表';
+
+-- =============================================
+-- AI反欺诈监测 - 可疑门店表
+-- =============================================
+CREATE TABLE suspicious_store (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    store_id BIGINT NOT NULL COMMENT '门店ID',
+    store_name VARCHAR(100) NOT NULL COMMENT '门店名称',
+    risk_score INT DEFAULT 0 COMMENT '风险评分(0-100)',
+    risk_level VARCHAR(20) DEFAULT 'LOW' COMMENT '风险等级: LOW-低, MEDIUM-中, HIGH-高, CRITICAL-严重',
+    detection_count INT DEFAULT 0 COMMENT '检测次数',
+    last_detection_time DATETIME COMMENT '最后检测时间',
+    status VARCHAR(20) DEFAULT 'PENDING' COMMENT '状态: PENDING-待处理, INVESTIGATING-调查中, CONFIRMED-已确认, RESOLVED-已解决, DISMISSED-已忽略',
+    handler_id BIGINT COMMENT '处理人ID',
+    handler_name VARCHAR(50) COMMENT '处理人',
+    handle_time DATETIME COMMENT '处理时间',
+    handle_remark VARCHAR(500) COMMENT '处理备注',
+    create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    KEY idx_store_id (store_id),
+    KEY idx_risk_level (risk_level),
+    KEY idx_status (status),
+    KEY idx_risk_score (risk_score)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='可疑门店表';
+
+-- =============================================
+-- AI反欺诈监测 - 操作锁定日志表
+-- =============================================
+CREATE TABLE operation_lock_log (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    lock_no VARCHAR(50) NOT NULL COMMENT '锁定编号',
+    store_id BIGINT COMMENT '门店ID',
+    store_name VARCHAR(100) COMMENT '门店名称',
+    device_id BIGINT COMMENT '设备ID',
+    device_no VARCHAR(50) COMMENT '设备编号',
+    cashier_id BIGINT COMMENT '收银员ID',
+    cashier_name VARCHAR(50) COMMENT '收银员',
+    operation_type VARCHAR(30) NOT NULL COMMENT '操作类型: REFUND-退款, DISCOUNT-折扣',
+    trigger_rule VARCHAR(100) COMMENT '触发规则',
+    risk_level INT DEFAULT 1 COMMENT '风险等级: 1-低, 2-中, 3-高',
+    lock_reason VARCHAR(500) COMMENT '锁定原因',
+    lock_details JSON COMMENT '锁定详情(JSON)',
+    is_offline TINYINT DEFAULT 1 COMMENT '是否离线触发: 0-否, 1-是',
+    verify_status TINYINT DEFAULT 0 COMMENT '验证状态: 0-待验证, 1-验证通过, 2-验证失败, 3-已取消',
+    verify_user_id BIGINT COMMENT '验证人ID',
+    verify_user_name VARCHAR(50) COMMENT '验证人',
+    verify_time DATETIME COMMENT '验证时间',
+    verify_remark VARCHAR(500) COMMENT '验证备注',
+    sync_status TINYINT DEFAULT 0 COMMENT '同步状态: 0-待同步, 1-已同步',
+    sync_time DATETIME COMMENT '同步时间',
+    create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_lock_no (lock_no),
+    KEY idx_store_id (store_id),
+    KEY idx_operation_type (operation_type),
+    KEY idx_verify_status (verify_status),
+    KEY idx_create_time (create_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='操作锁定日志表';
+
+-- =============================================
+-- AI反欺诈监测 - 风险告警表
+-- =============================================
+CREATE TABLE fraud_alert (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    alert_no VARCHAR(50) NOT NULL COMMENT '告警编号',
+    store_id BIGINT COMMENT '门店ID',
+    store_name VARCHAR(100) COMMENT '门店名称',
+    device_id BIGINT COMMENT '设备ID',
+    device_no VARCHAR(50) COMMENT '设备编号',
+    alert_type VARCHAR(30) NOT NULL COMMENT '告警类型: REFUND_FREQUENCY-高频退款, REFUND_AMOUNT-大额退款, ABNORMAL_DISCOUNT-异常折扣, SUSPICIOUS_STORE-可疑门店',
+    risk_level INT DEFAULT 1 COMMENT '风险等级: 1-低, 2-中, 3-高',
+    alert_title VARCHAR(200) NOT NULL COMMENT '告警标题',
+    alert_content TEXT COMMENT '告警内容',
+    alert_details JSON COMMENT '告警详情(JSON)',
+    status VARCHAR(20) DEFAULT 'NEW' COMMENT '状态: NEW-新建, ACKNOWLEDGED-已确认, PROCESSING-处理中, RESOLVED-已解决, CLOSED-已关闭',
+    assignee_id BIGINT COMMENT '指派人ID',
+    assignee_name VARCHAR(50) COMMENT '指派人',
+    resolve_time DATETIME COMMENT '解决时间',
+    resolve_remark VARCHAR(500) COMMENT '解决备注',
+    create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_alert_no (alert_no),
+    KEY idx_store_id (store_id),
+    KEY idx_alert_type (alert_type),
+    KEY idx_risk_level (risk_level),
+    KEY idx_status (status),
+    KEY idx_create_time (create_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='风险告警表';
+
+-- =============================================
+-- 初始化反欺诈检测规则
+-- =============================================
+INSERT INTO fraud_detection_rule (rule_code, rule_name, rule_type, threshold_value, threshold_unit, time_window, risk_level, lock_operation, require_online_verify, status, remark) VALUES
+('RULE-REFUND-FREQ-001', '15分钟内退款超过5次', 'REFUND_FREQUENCY', 5, 'TIMES', 15, 2, 1, 1, 1, '15分钟内退款次数超过5次触发警告'),
+('RULE-REFUND-FREQ-002', '1小时内退款超过10次', 'REFUND_FREQUENCY', 10, 'TIMES', 60, 3, 1, 1, 1, '1小时内退款次数超过10次触发高风险'),
+('RULE-REFUND-AMT-001', '单笔退款超过500元', 'REFUND_AMOUNT', 500, 'AMOUNT', 1, 2, 1, 1, 1, '单笔退款金额超过500元'),
+('RULE-REFUND-AMT-002', '单笔退款超过2000元', 'REFUND_AMOUNT', 2000, 'AMOUNT', 1, 3, 1, 1, 1, '单笔退款金额超过2000元，高风险'),
+('RULE-REFUND-AMT-003', '1小时内累计退款超过3000元', 'REFUND_AMOUNT', 3000, 'AMOUNT', 60, 3, 1, 1, 1, '1小时内累计退款金额超过3000元'),
+('RULE-DISCOUNT-001', '折扣低于7折', 'ABNORMAL_DISCOUNT', 70, 'PERCENT', 1, 2, 1, 1, 1, '订单折扣低于7折（70%）'),
+('RULE-DISCOUNT-002', '折扣低于5折', 'ABNORMAL_DISCOUNT', 50, 'PERCENT', 1, 3, 1, 1, 1, '订单折扣低于5折（50%），高风险'),
+('RULE-DISCOUNT-003', '1小时内3单以上低于8折', 'ABNORMAL_DISCOUNT', 3, 'TIMES', 60, 2, 1, 1, 1, '1小时内3单及以上折扣低于8折');
+

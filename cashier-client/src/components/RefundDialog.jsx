@@ -18,6 +18,8 @@ import {
 import { ExclamationCircleOutlined } from '@ant-design/icons'
 import db from '../db/dexie'
 import refundService from '../services/refundService'
+import fraudDetectionService from '../services/fraudDetectionService'
+import OperationLockModal from './OperationLockModal'
 
 const { TextArea } = Input
 
@@ -39,6 +41,9 @@ export default function RefundDialog({ visible, order, onClose, onSuccess }) {
   const [submitting, setSubmitting] = useState(false)
   const [refundedAmount, setRefundedAmount] = useState(0)
   const [managerModalVisible, setManagerModalVisible] = useState(false)
+  const [lockModalVisible, setLockModalVisible] = useState(false)
+  const [currentLockData, setCurrentLockData] = useState(null)
+  const [pendingRefundData, setPendingRefundData] = useState(null)
   const [managerForm] = Form.useForm()
   const [form] = Form.useForm()
 
@@ -179,6 +184,41 @@ export default function RefundDialog({ visible, order, onClose, onSuccess }) {
         finalRefundAmount = availableRefundAmount
       }
 
+      const riskResult = await fraudDetectionService.checkRefundRisk(
+        finalRefundAmount,
+        order.id
+      )
+
+      if (riskResult.isRisk && riskResult.shouldLock) {
+        const lockData = await fraudDetectionService.createLock(
+          'REFUND',
+          riskResult,
+          {
+            orderId: order.id,
+            orderNo: order.order_no,
+            refundAmount: finalRefundAmount,
+            refundType,
+            refundReason,
+            items: selectedItems,
+            remark: values.remark || '',
+          }
+        )
+
+        setPendingRefundData({
+          orderId: order.id,
+          refundType,
+          refundReason,
+          items: selectedItems,
+          remark: values.remark || '',
+          managerInfo: verifyResult.data,
+        })
+        setCurrentLockData(lockData)
+        setManagerModalVisible(false)
+        setLockModalVisible(true)
+        setSubmitting(false)
+        return
+      }
+
       await refundService.createRefund(order.id, {
         refundType,
         refundReason,
@@ -197,6 +237,42 @@ export default function RefundDialog({ visible, order, onClose, onSuccess }) {
     } finally {
       setSubmitting(false)
     }
+  }
+
+  const handleLockVerified = async () => {
+    if (!pendingRefundData) return
+
+    setSubmitting(true)
+    try {
+      await refundService.createRefund(
+        pendingRefundData.orderId,
+        {
+          refundType: pendingRefundData.refundType,
+          refundReason: pendingRefundData.refundReason,
+          items: pendingRefundData.items,
+          remark: pendingRefundData.remark || '',
+          managerInfo: pendingRefundData.managerInfo,
+        }
+      )
+
+      setLockModalVisible(false)
+      setCurrentLockData(null)
+      setPendingRefundData(null)
+      message.success('退菜申请已提交，待审核通过后自动还原库存')
+      onSuccess && onSuccess()
+      onClose && onClose()
+    } catch (error) {
+      console.error('验证通过后提交退款失败：', error)
+      message.error(error.message || '提交退菜失败')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const handleLockClose = () => {
+    setLockModalVisible(false)
+    setCurrentLockData(null)
+    setPendingRefundData(null)
   }
 
   const columns = [
@@ -547,6 +623,13 @@ export default function RefundDialog({ visible, order, onClose, onSuccess }) {
           </Form.Item>
         </Form>
       </Modal>
+
+      <OperationLockModal
+        visible={lockModalVisible}
+        lockData={currentLockData}
+        onClose={handleLockClose}
+        onVerified={handleLockVerified}
+      />
     </>
   )
 }

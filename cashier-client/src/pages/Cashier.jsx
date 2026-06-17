@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { Input, Button, Modal, Radio, message, Empty, InputNumber, Alert, Tag, Card, Select, Tooltip, Badge, Table, Statistic, Row, Col, Form, Tabs } from 'antd'
 import { SearchOutlined, DeleteOutlined, PlusOutlined, MinusOutlined, WifiOutlined, UserOutlined, GiftOutlined, CrownOutlined, IdcardOutlined, CloseOutlined, CreditCardOutlined, FireOutlined, BulbOutlined, AlertOutlined, ShoppingOutlined, FileTextOutlined } from '@ant-design/icons'
 import AppLayout from '../components/AppLayout'
+import OperationLockModal from '../components/OperationLockModal'
 import db from '../utils/db'
 import { initMockData } from '../db/mockData'
 import useNetworkStatus from '../hooks/useNetwork'
@@ -11,6 +12,7 @@ import kitchenPrintService from '../services/kitchenPrintService'
 import recommendService from '../services/intelligentRecommendService'
 import dailyReportService from '../services/dailyReportService'
 import invoiceService from '../services/invoiceService'
+import fraudDetectionService from '../services/fraudDetectionService'
 import dayjs from 'dayjs'
 
 const { Option } = Select
@@ -51,6 +53,10 @@ function Cashier() {
   const [currentInvoice, setCurrentInvoice] = useState(null)
   const [invoiceGenerating, setInvoiceGenerating] = useState(false)
   const [invoiceForm] = Form.useForm()
+
+  const [lockModalVisible, setLockModalVisible] = useState(false)
+  const [currentLockData, setCurrentLockData] = useState(null)
+  const [pendingOrderData, setPendingOrderData] = useState(null)
 
   useEffect(() => {
     initData()
@@ -425,10 +431,97 @@ function Cashier() {
     setPayModalVisible(true)
   }
 
+  const createOrderAndProcess = async (orderData, orderNo) => {
+    const order = await db.createOrder(orderData)
+
+    message.success(`订单 ${orderNo} 创建成功`)
+
+    try {
+      await kitchenPrintService.printOrder({ ...orderData, order_no: orderNo, id: order?.id })
+    } catch (printErr) {
+      console.warn('厨房打印提交失败，订单已保存:', printErr)
+      message.warning('厨房打印提交失败，可在设置中重试')
+    }
+    setCart([])
+    setDiscount(0)
+    setUsePoints(false)
+    setDeductPoints(0)
+    setPayModalVisible(false)
+    setSelectedCardId(null)
+    loadProducts(activeCategory)
+
+    try {
+      dailyReportService.generateTodayReport().catch(e => console.warn('生成当日日报失败:', e))
+    } catch (e) {
+      console.warn('生成当日日报失败:', e)
+    }
+
+    try {
+      invoiceService.checkOrderInvoiceEligibility(order).catch(e => console.warn('检查发票资格失败:', e))
+    } catch (e) {
+      console.warn('检查发票资格失败:', e)
+    }
+
+    try {
+      syncService.triggerSync().catch(e => console.warn('触发同步失败:', e))
+    } catch (e) {
+      console.warn('触发同步失败:', e)
+    }
+
+    return order
+  }
+
   const handlePayment = async () => {
     try {
       const userInfo = JSON.parse(localStorage.getItem('userInfo') || '{}')
       const orderNo = `ORD${Date.now()}${Math.random().toString(36).substr(2, 4)}`
+
+      const riskResult = await fraudDetectionService.checkDiscountRisk(
+        totalAmount,
+        payAmount,
+        memberDiscount
+      )
+
+      if (riskResult.isRisk && riskResult.shouldLock) {
+        const lockData = await fraudDetectionService.createLock(
+          'DISCOUNT',
+          riskResult,
+          {
+            orderNo,
+            totalAmount: Number(totalAmount.toFixed(2)),
+            payAmount: Number(payAmount),
+            memberDiscount,
+            discountAmount: Number(discount) + pointsValue,
+            discountPercent: riskResult.discountPercent,
+            payType,
+            items: cart,
+          }
+        )
+
+        setPendingOrderData({
+          orderNo,
+          userInfo,
+          currentMember,
+          payAmount,
+          pointsValue,
+          memberDiscount,
+          usePoints,
+          deductPoints,
+          payType,
+          selectedCardId,
+          memberCards,
+          cart,
+          totalAmount,
+          discount,
+          pointsEarnPreview,
+          memberLevelDiscountInfo,
+          isOnline,
+        })
+        setCurrentLockData(lockData)
+        setPayModalVisible(false)
+        setLockModalVisible(true)
+        return
+      }
 
       if (currentMember && payAmount > 0) {
         try {
@@ -524,48 +617,12 @@ function Cashier() {
         created_at: new Date().toISOString(),
       }
 
-      const order = await db.createOrder(orderData)
-
-      message.success(`订单 ${orderNo} 创建成功`)
-
-      try {
-        await kitchenPrintService.printOrder({ ...orderData, order_no: orderNo, id: order?.id })
-      } catch (printErr) {
-        console.warn('厨房打印提交失败，订单已保存:', printErr)
-        message.warning('厨房打印提交失败，可在设置中重试')
-      }
-      setCart([])
-      setDiscount(0)
-      setUsePoints(false)
-      setDeductPoints(0)
-      setPayModalVisible(false)
-      setSelectedCardId(null)
-      loadProducts(activeCategory)
-
-      try {
-        dailyReportService.generateTodayReport().catch(e => console.warn('生成当日日报失败:', e))
-      } catch (e) {
-        console.warn('生成当日日报失败:', e)
-      }
+      await createOrderAndProcess(orderData, orderNo)
 
       try {
         dailyReportService.checkAndGenerateMissingReports().catch(e => console.warn('检查并补全遗漏日报失败:', e))
       } catch (e) {
         console.warn('检查并补全遗漏日报失败:', e)
-      }
-
-      if (result && result.id) {
-        try {
-          const existingInvoice = await invoiceService.getInvoiceByOrderId(result.id)
-          if (!existingInvoice) {
-            setCurrentOrderForInvoice(result)
-            setCurrentInvoice(null)
-            invoiceForm.resetFields()
-            setInvoiceModalVisible(true)
-          }
-        } catch (e) {
-          console.warn('检查订单发票状态失败:', e)
-        }
       }
 
       try {
@@ -593,6 +650,169 @@ function Cashier() {
       console.error('Payment failed:', error)
       message.error('结算失败：' + error.message)
     }
+  }
+
+  const handleLockVerified = async () => {
+    if (!pendingOrderData) return
+
+    try {
+      const {
+        orderNo,
+        userInfo,
+        currentMember: member,
+        payAmount: amount,
+        pointsValue: pValue,
+        memberDiscount: mDiscount,
+        usePoints: uPoints,
+        deductPoints: dPoints,
+        payType: pType,
+        selectedCardId: cardId,
+        memberCards: mCards,
+        cart: cartItems,
+        totalAmount: tAmount,
+        discount: disc,
+        pointsEarnPreview: pEarn,
+        memberLevelDiscountInfo: levelInfo,
+        isOnline: online,
+      } = pendingOrderData
+
+      if (member && amount > 0) {
+        try {
+          const pointsResult = await memberService.addPoints(
+            member.id,
+            amount,
+            orderNo
+          )
+          if (pointsResult.points > 0) {
+            message.info(`赠送积分：+${pointsResult.points}`)
+          }
+        } catch (e) {
+          console.warn('Add points failed:', e)
+        }
+      }
+
+      if (member && uPoints && dPoints > 0) {
+        try {
+          await memberService.deductPoints(
+            member.id,
+            dPoints,
+            orderNo,
+            `消费抵扣：${dPoints}积分 = ¥${pValue.toFixed(2)}`
+          )
+          message.info(`积分抵扣：-${dPoints}积分 (¥${pValue.toFixed(2)})`)
+        } catch (e) {
+          console.warn('Deduct points failed:', e)
+          message.error('积分抵扣失败：' + e.message)
+          return
+        }
+      }
+
+      if (pType === 'member_card' && cardId && amount > 0) {
+        try {
+          const card = mCards.find((c) => c.id === cardId)
+          if (!online && card && (card.credit_limit || 0) > 0) {
+            const available = (card.balance || 0) - (card.reserved_balance || 0)
+              + ((card.credit_limit || 0) - (card.used_credit || 0))
+            if (available < amount) {
+              throw new Error('储值卡可用额度（含预授权）不足')
+            }
+          }
+          const payResult = await memberService.payByCard(cardId, amount, orderNo)
+          if (!payResult?.fromServer && !online) {
+            message.warning('离线扣款成功，联网后将同步至服务器')
+          }
+          if (payResult?.fromServer) {
+            const refreshed = await memberService.getMemberCards(member?.id)
+            if (refreshed) setMemberCards(refreshed)
+          }
+        } catch (e) {
+          console.error('Member card pay failed:', e)
+          message.error('储值卡支付失败：' + e.message)
+          return
+        }
+      }
+
+      const orderData = {
+        items: cartItems,
+        payments: [
+          {
+            payment_no: `PAY${Date.now()}${Math.random().toString(36).substr(2, 4)}`,
+            pay_type: pType === 'member_card' ? 5 : (pType === 'cash' ? 1 : pType === 'wechat' ? 2 : 3),
+            pay_amount: Number(amount),
+            pay_status: 1,
+            pay_time: new Date().toISOString(),
+            transaction_id: pType === 'member_card' && cardId
+              ? `CARD${cardId}-${Date.now()}`
+              : null,
+          }
+        ],
+        total_amount: Number(tAmount.toFixed(2)),
+        member_discount_amount: mDiscount,
+        discount_amount: Number(disc) + pValue,
+        pay_amount: Number(amount),
+        pay_type: pType === 'member_card' ? 5 : (pType === 'cash' ? 1 : pType === 'wechat' ? 2 : 3),
+        pay_status: 1,
+        order_status: 2,
+        sync_status: 0,
+        sync_attempts: 0,
+        sync_error: null,
+        cashier_id: userInfo.id || null,
+        cashier_name: userInfo.name || '收银员',
+        member_id: member?.id || null,
+        member_name: member?.member_name || null,
+        member_phone: member?.phone || null,
+        points_earned: pEarn,
+        points_deducted: dPoints,
+        remark: [
+          levelInfo ? `会员等级折扣：${levelInfo.levelName} ${levelInfo.discount}` : null,
+          dPoints > 0 ? `积分抵扣：${dPoints}积分` : null,
+        ].filter(Boolean).join('; '),
+        created_at: new Date().toISOString(),
+      }
+
+      await createOrderAndProcess(orderData, orderNo)
+
+      try {
+        dailyReportService.checkAndGenerateMissingReports().catch(e => console.warn('检查并补全遗漏日报失败:', e))
+      } catch (e) {
+        console.warn('检查并补全遗漏日报失败:', e)
+      }
+
+      try {
+        recommendService.invalidateCache()
+        await Promise.all([
+          loadRecommendData(),
+          loadStockAlerts(),
+        ])
+      } catch (e) {
+        console.warn('Refresh recommend after payment failed:', e)
+      }
+
+      if (online) {
+        try {
+          await Promise.all([
+            syncService.syncSalesSummaries(),
+            syncService.syncOrders(),
+            syncService.syncPointRecords(),
+          ])
+        } catch (e) {
+          console.warn('Auto sync failed:', e)
+        }
+      }
+
+      setLockModalVisible(false)
+      setCurrentLockData(null)
+      setPendingOrderData(null)
+    } catch (error) {
+      console.error('验证通过后创建订单失败:', error)
+      message.error('创建订单失败：' + error.message)
+    }
+  }
+
+  const handleLockClose = () => {
+    setLockModalVisible(false)
+    setCurrentLockData(null)
+    setPendingOrderData(null)
   }
 
   const handleQuickAdd = (e) => {
@@ -1747,6 +1967,13 @@ function Cashier() {
           </Form>
         )}
       </Modal>
+
+      <OperationLockModal
+        visible={lockModalVisible}
+        lockData={currentLockData}
+        onClose={handleLockClose}
+        onVerified={handleLockVerified}
+      />
     </AppLayout>
   )
 }

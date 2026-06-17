@@ -648,6 +648,70 @@ class ApiService {
     })
   }
 
+  async getFraudDetectionRules() {
+    return this.request(
+      {
+        url: '/fraud/rules',
+        method: 'get',
+      },
+      { offlineQueue: false, offlineData: null }
+    )
+  }
+
+  async verifyOperationLock(params) {
+    return this.request(
+      {
+        url: '/fraud/lock/verify',
+        method: 'post',
+        data: params,
+      },
+      { offlineQueue: false, offlineData: null }
+    )
+  }
+
+  async syncOperationLockLogs(lockLogs) {
+    return this.request(
+      {
+        url: '/fraud/lock/sync',
+        method: 'post',
+        data: lockLogs,
+      },
+      { offlineQueue: false, offlineData: null }
+    )
+  }
+
+  async getSuspiciousStores(params = {}) {
+    return this.request(
+      {
+        url: '/fraud/suspicious-stores',
+        method: 'get',
+        params,
+      },
+      { offlineQueue: false, offlineData: null }
+    )
+  }
+
+  async getFraudAlerts(params = {}) {
+    return this.request(
+      {
+        url: '/fraud/alerts',
+        method: 'get',
+        params,
+      },
+      { offlineQueue: false, offlineData: null }
+    )
+  }
+
+  async analyzeStoreFraud(storeId) {
+    return this.request(
+      {
+        url: `/fraud/analyze/${storeId}`,
+        method: 'post',
+      },
+      { offlineQueue: false, offlineData: null }
+    )
+  }
+
   get baseURL() {
     return baseURL
   }
